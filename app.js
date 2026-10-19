@@ -293,6 +293,7 @@
       this.anim = null;
       this.aiming = false;
       this.peekState = null;
+      this.fx = [];
     }
 
     // 카메라
@@ -332,12 +333,14 @@
         profile.lifetimeMistakes++; saveProfile();
         sfx('boom'); haptic('heavy');
       } else if (out.solved) {
-        sfx('sector'); haptic('medium');
-        let m = out.solved > 1 ? `🧩 구역 ${out.solved}개 완성!` : '🧩 구역 완성!';
-        if (this.cfg.kind === 'timed') m += `  +${out.solved * this.cfg.bonus}초`;
-        if (out.gems) m += `  💎+${out.gems}`;
-        if (out.rewards) m += `  🔍+${out.rewards}`;
-        toast(m);
+        sfx('sector'); haptic('heavy');
+        const last = s.undoStack[s.undoStack.length - 1];
+        for (const sk of (last ? last.s : [])) this.celebrate(kx(sk), ky(sk));
+        const bits = [];
+        if (this.cfg.kind === 'timed') bits.push(`⏱ +${out.solved * this.cfg.bonus}초`);
+        if (out.rewards) bits.push(`🔍 돋보기 +${out.rewards}`);
+        if (out.gems) bits.push(`💎 +${out.gems}`);
+        banner(out.solved > 1 ? `🎉 구역 ${out.solved}개 클리어!` : '🎉 구역 클리어!', bits.join('   '), s.solved.size);
       } else if (out.gems) {
         sfx('gem'); haptic('medium');
         toast(out.gems >= 5 ? `💖 하트 발견! +${out.gems}` : `💎 +${out.gems}`);
@@ -355,6 +358,18 @@
       sfx('undo'); haptic('light');
       this.changed();
     }
+    // 구역 완성 연출 (1.6초): 번쩍 → 테두리 퍼짐 → CLEAR 도장 → 꽃가루
+    celebrate(sx, sy) {
+      const parts = [];
+      const cols = ['#FFD54F', '#FF8A80', '#80D8FF', '#B9F6CA', '#EA80FC', '#FFFFFF', th.accent];
+      for (let i = 0; i < 34; i++) {
+        const a = Math.random() * Math.PI * 2, v = 0.55 + Math.random() * 1.1;
+        parts.push({ a, v, vy0: -0.9 - Math.random() * 0.9, c: cols[i % cols.length], r: Math.random() * Math.PI, sz: 0.18 + Math.random() * 0.16 });
+      }
+      this.fx.push({ sx, sy, t0: performance.now(), parts });
+      this.dirty = true;
+    }
+
     // 돋보기 — 3×3 의 지뢰를 5초간 비춰 본다
     toggleAim() {
       const s = this.s;
@@ -416,6 +431,14 @@
     el.textContent = ok ? '✓ 저장됨' : '⚠️ 저장 실패';
     el.classList.add('on');
     clearTimeout(savedTimer); savedTimer = setTimeout(() => el.classList.remove('on'), 900);
+  }
+
+  let bannerTimer = 0;
+  function banner(title, sub, total) {
+    const el = $('banner');
+    el.innerHTML = `<div class="b1">${title}</div>${sub ? `<div class="b2">${sub}</div>` : ''}<div class="b3">지금까지 ${total}구역 완성</div>`;
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => el.classList.remove('on'), 2200);
   }
 
   let toastTimer = 0;
@@ -582,7 +605,7 @@
         } else {
           ctx.fillStyle = th.hidSh; rr(px, py, w, w, rad); ctx.fill();
           ctx.fillStyle = alt ? th.hidA : th.hidB; rr(px, py, w, w - lift, rad); ctx.fill();
-          if (s.flagged.has(k)) drawFlag(px, py - lift / 2, w);
+          if (s.flagged.has(k) || s.solved.has(key(sx, sy))) drawFlag(px, py - lift / 2, w);
           else if (c >= 20) {
             const v = f.gemAt(x, y);
             if (v) { ctx.font = emoFont; ctx.fillText(v >= 5 ? '💖' : '💎', px + w / 2, py + (w - lift) / 2 + c * 0.03); }
@@ -618,12 +641,72 @@
       ctx.restore();
     }
 
+    // 완성 구역: 금색 테두리 + ✓ 배지
+    const GOLD = th.dark ? '#FFD36E' : '#E3A92B';
+    const sx0 = fdiv(x0, SECTOR), sx1 = fdiv(x1, SECTOR), sy0 = fdiv(y0, SECTOR), sy1 = fdiv(y1, SECTOR);
+    for (let sy = sy0; sy <= sy1; sy++) for (let sx = sx0; sx <= sx1; sx++) {
+      if (!s.solved.has(key(sx, sy))) continue;
+      const bx = g.ox + sx * SECTOR * c, by = g.oy + sy * SECTOR * c, bw = SECTOR * c;
+      ctx.lineWidth = Math.max(2, c * 0.1); ctx.strokeStyle = GOLD;
+      rr(bx + ctx.lineWidth / 2, by + ctx.lineWidth / 2, bw - ctx.lineWidth, bw - ctx.lineWidth, c * 0.35); ctx.stroke();
+      if (c >= 14) {
+        const br = Math.max(9, c * 0.42), cx = bx + bw - br * 0.9, cy = by + br * 0.9;
+        ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(cx, cy, br, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, br * 0.28); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(cx - br * 0.45, cy + br * 0.02); ctx.lineTo(cx - br * 0.1, cy + br * 0.38); ctx.lineTo(cx + br * 0.48, cy - br * 0.34); ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+    }
+
     // 구역 경계
     ctx.strokeStyle = th.line; ctx.lineWidth = Math.max(1, c * 0.06);
     ctx.beginPath();
     for (let x = Math.ceil(x0 / SECTOR) * SECTOR; x <= x1 + 1; x += SECTOR) { const p = g.ox + x * c; ctx.moveTo(p, 0); ctx.lineTo(p, H); }
     for (let y = Math.ceil(y0 / SECTOR) * SECTOR; y <= y1 + 1; y += SECTOR) { const p = g.oy + y * c; ctx.moveTo(0, p); ctx.lineTo(W, p); }
     ctx.stroke();
+
+    drawFx(g, s, c);
+  }
+
+  function drawFx(g, s, c) {
+    if (!g.fx.length) return;
+    const now = performance.now(), DUR = 1600;
+    g.fx = g.fx.filter((f) => now - f.t0 < DUR && s.solved.has(key(f.sx, f.sy)));
+    const GOLD = th.dark ? '#FFD36E' : '#E3A92B';
+    for (const f of g.fx) {
+      const t = (now - f.t0) / DUR;
+      const bx = g.ox + f.sx * SECTOR * c, by = g.oy + f.sy * SECTOR * c, bw = SECTOR * c;
+      const cx = bx + bw / 2, cy = by + bw / 2;
+      ctx.save();
+      // 번쩍
+      if (t < 0.25) { ctx.globalAlpha = (1 - t / 0.25) * 0.75; ctx.fillStyle = '#fff'; rr(bx, by, bw, bw, c * 0.35); ctx.fill(); }
+      // 퍼지는 테두리
+      const grow = t * c * 2.2;
+      ctx.globalAlpha = Math.max(0, 1 - t * 1.3); ctx.strokeStyle = GOLD; ctx.lineWidth = Math.max(3, c * 0.16);
+      rr(bx - grow, by - grow, bw + grow * 2, bw + grow * 2, c * 0.35 + grow); ctx.stroke();
+      // 꽃가루
+      ctx.globalAlpha = Math.max(0, 1 - Math.max(0, t - 0.55) / 0.45);
+      const sec = t * DUR / 1000;
+      for (const p of f.parts) {
+        const dist = p.v * c * 4.2 * (1 - Math.exp(-sec * 3));
+        const px = cx + Math.cos(p.a) * dist;
+        const py = cy + Math.sin(p.a) * dist * 0.8 + (p.vy0 * sec + 2.2 * sec * sec) * c * 1.4;
+        ctx.save(); ctx.translate(px, py); ctx.rotate(p.r + sec * 7); ctx.fillStyle = p.c;
+        ctx.fillRect(-p.sz * c * 0.6, -p.sz * c * 0.3, p.sz * c * 1.2, p.sz * c * 0.6); ctx.restore();
+      }
+      // CLEAR 도장
+      const pop = t < 0.18 ? 1.6 - (t / 0.18) * 0.6 : 1;
+      ctx.globalAlpha = t < 0.75 ? 1 : Math.max(0, 1 - (t - 0.75) / 0.25);
+      ctx.translate(cx, cy); ctx.rotate(-0.12); ctx.scale(pop, pop);
+      const fs = Math.max(16, Math.min(bw * 0.24, 64));
+      ctx.font = `900 ${fs}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText('CLEAR!').width;
+      ctx.fillStyle = 'rgba(255,255,255,.92)'; rr(-tw / 2 - fs * 0.4, -fs * 0.72, tw + fs * 0.8, fs * 1.44, fs * 0.35); ctx.fill();
+      ctx.lineWidth = Math.max(3, fs * 0.09); ctx.strokeStyle = GOLD; ctx.stroke();
+      ctx.fillStyle = GOLD; ctx.fillText('CLEAR!', 0, fs * 0.04);
+      ctx.restore();
+    }
   }
 
   function frame(now) {
@@ -634,6 +717,7 @@
         game.ox = a.fx + (a.tx - a.fx) * e; game.oy = a.fy + (a.ty - a.fy) * e; game.dirty = true;
         if (t >= 1) { game.anim = null; game.cameraMoved(); }
       }
+      if (game.fx.length) game.dirty = true;
       if (game.peekState) {
         if (now >= game.peekState.until) game.peekState = null;
         game.dirty = true;
