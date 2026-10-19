@@ -5,7 +5,7 @@ Apple 개발자 등록도, 7일 제한도 없습니다. 한 번 열고 나면 �
 
 ## 1. 주소
 
-GitHub Pages 로 올라가 있다: **https://blackgom-glitch.github.io/sh-minesweeper/**
+GitHub Pages 로 올라가 있다: **https://kimjungjin87.github.io/sh-minesweeper/**
 
 업데이트는 이 저장소의 `main` 에 고친 파일을 올리기만 하면 끝이다.
 1~2분 뒤 GitHub 이 사이트를 다시 만들고, 아이폰은 **다음에 앱을 열 때 자동으로** 새 버전을 받는다.
