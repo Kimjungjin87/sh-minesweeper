@@ -13,6 +13,110 @@
   const PEEK_MS = 5000;
   const RIPPLE_MS = 55;   // 그림이 가운데서부터 한 칸씩 번져 나가는 간격
   const picOf = (field, sx, sy) => Pictures.pick(Mines.hash(field.seed, sx, sy, 11));
+
+  // ─────────────────────────── 하드코어: 회차 그림 ───────────────────────────
+  // 회차마다 그림 하나. 96×96 보드 전체가 48×48 그림이 되고(그림 한 점 = 2×2 칸),
+  // 구역을 풀 때마다 그 자리의 조각이 드러난다.
+  const HC_PICS = [
+    ['🐱', '고양이'], ['🌸', '벚꽃'], ['🐶', '강아지'], ['🍓', '딸기'], ['🐰', '토끼'], ['🌻', '해바라기'],
+    ['🐼', '판다'], ['🍰', '케이크'], ['🦊', '여우'], ['🌈', '무지개'], ['🐥', '병아리'], ['🍑', '복숭아'],
+    ['🐧', '펭귄'], ['🧁', '컵케이크'], ['🐳', '고래'], ['🍀', '네잎클로버'], ['🦄', '유니콘'], ['🍉', '수박'],
+    ['🐹', '햄스터'], ['🦋', '나비'], ['🐨', '코알라'], ['🍒', '체리'], ['🐢', '거북이'], ['💝', '선물'],
+  ];
+  const hcPic = (pStart) => HC_PICS[((Mines.periodIndex(pStart) % HC_PICS.length) + HC_PICS.length) % HC_PICS.length];
+  const hcCache = {};
+  function hcArt(periodId) {
+    if (hcCache[periodId]) return hcCache[periodId];
+    const [y, m, d] = [periodId.slice(0, 4), periodId.slice(4, 6), periodId.slice(6, 8)];
+    const start = Date.parse(`${y}-${m}-${d}T07:00:00+09:00`);
+    const [emoji, name] = hcPic(start);
+    const N = 48, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const c2 = cv.getContext('2d', { willReadFrequently: true });
+    c2.textAlign = 'center'; c2.textBaseline = 'middle';
+    c2.font = `${N * 0.86}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    c2.fillText(emoji, N / 2, N / 2 + N * 0.04);
+    const px = new Array(N * N).fill(null);
+    let filled = 0;
+    try {
+      const d2 = c2.getImageData(0, 0, N, N).data;
+      for (let i = 0; i < N * N; i++) {
+        if (d2[i * 4 + 3] > 110) {
+          px[i] = `rgb(${d2[i * 4]},${d2[i * 4 + 1]},${d2[i * 4 + 2]})`; filled++;
+        }
+      }
+    } catch (e) {}
+    if (filled < N * N * 0.12) {   // 그림 글꼴이 없으면 작은 그림을 크게 확대해 쓴다
+      const pic = Pictures.list[Mines.periodIndex(start) % Pictures.list.length];
+      for (let yy = 0; yy < N; yy++) for (let xx = 0; xx < N; xx++) {
+        const ch = pic.px[Math.floor(yy / 6)][Math.floor(xx / 6)];
+        px[yy * N + xx] = ch === '+' ? pic.c1 : ch === '#' ? pic.c2 : null;
+      }
+    }
+    return (hcCache[periodId] = { emoji, name, px, N });
+  }
+  const hcColor = (art, x, y) => art.px[(y >> 1) * art.N + (x >> 1)];
+
+  // ─────────────────────────── 랭킹 서버 ───────────────────────────
+  const rankOn = () => !!(window.RANK_URL && /^https?:\/\//.test(window.RANK_URL));
+  async function rankFetch(opts) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 12000);
+    try {
+      const res = await fetch(opts.url, { ...opts.init, signal: ctl.signal, redirect: 'follow' });
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+  function rankTop(period) {
+    const u = `${window.RANK_URL}?action=top&period=${period}&pid=${profile.pid}&limit=50`;
+    return rankFetch({ url: u, init: { method: 'GET' } });
+  }
+  function rankSubmit(rec) {
+    // text/plain 이라야 브라우저가 사전 요청(CORS preflight)을 하지 않는다 → Apps Script 와 잘 맞는다
+    return rankFetch({ url: window.RANK_URL, init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(rec) } });
+  }
+  /** 기록을 낸다. 실패하면 맡겨 두었다가 다음에 다시 낸다. */
+  async function submitBest(period) {
+    const b = profile.hcBest[period];
+    if (!b) return { ok: false, error: 'no record' };
+    const rec = { period, pid: profile.pid, name: profile.nickname || '익명', pct: b.pct, time: b.time, end: b.end };
+    if (!rankOn()) { profile.hcPending = rec; saveProfile(); return { ok: false, error: 'no server' }; }
+    try {
+      const r = await rankFetch({ url: window.RANK_URL, init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(rec) } });
+      if (r && r.ok) {
+        profile.hcPending = null; b.submitted = true; b.rank = r.me && r.me.rank;
+        if (r.name && r.name !== profile.nickname) profile.nickname = r.name;   // 서버가 가린 이름으로 맞춘다
+        saveProfile(); return r;
+      }
+      if (r && /period closed/.test(r.error || '')) { profile.hcPending = null; saveProfile(); }
+      else { profile.hcPending = rec; saveProfile(); }
+      return r || { ok: false };
+    } catch (e) { profile.hcPending = rec; saveProfile(); return { ok: false, error: 'offline' }; }
+  }
+  async function flushPending() {
+    const p = profile.hcPending;
+    if (!p || !rankOn()) return;
+    try {
+      const r = await rankSubmit({ ...p, name: profile.nickname || p.name });
+      if (r && (r.ok || /period closed/.test(r.error || ''))) { profile.hcPending = null; saveProfile(); }
+    } catch (e) {}
+  }
+  function fmtHMS(t) {
+    t = Math.max(0, Math.floor(t));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s2).padStart(2, '0');
+  }
+  function fmtPeriod(pid) {
+    const d = new Date(Date.parse(`${pid.slice(0, 4)}-${pid.slice(4, 6)}-${pid.slice(6, 8)}T12:00:00+09:00`));
+    return `${+pid.slice(4, 6)}/${+pid.slice(6, 8)}(${'일월화수목금토'[d.getUTCDay()]})`;
+  }
+  function untilText(ms) {
+    const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+    return d ? `${d}일 ${h}시간` : h ? `${h}시간 ${mm}분` : `${mm}분`;
+  }
+  function nextResetText() {
+    const t = Mines.nextReset(), d = new Date(t + 9 * 3600e3);
+    return `${'일월화수목금토'[d.getUTCDay()]} 07:00 (${untilText(t - Date.now())} 남음)`;
+  }
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (id) => document.getElementById(id);
   const layer = $('layer');
 
@@ -43,7 +147,8 @@
 
   // ─────────────────────────── 상태 ───────────────────────────
   const DEFAULT_PROFILE = { wallet: 0, lifetimeGems: 0, lifetimeMistakes: 0, theme: 'mint', unlocked: ['mint'],
-    introSeen: false, sound: true, haptic: true, magnifiers: 0, pictures: {} };
+    introSeen: false, sound: true, haptic: true, magnifiers: 0, pictures: {},
+    pid: '', nickname: '', hcBest: {}, hcPending: null };
   let profile = { ...DEFAULT_PROFILE };
   const summaries = {};            // 보드 id → 저장본 (홈 화면 통계용)
   let th = THEMES[0];
@@ -129,6 +234,18 @@
       const s = summaries[w.id];
       let st = '<div class="st new">새 지도</div>';
       const fresh = s && s.start && (w.kind !== 'daily' || s.day === today);
+      if (w.kind === 'hardcore') {
+        const per = Mines.periodId(), b = profile.hcBest[per];
+        const live = s && s.period === per && s.start;
+        const now = live ? (s.gameOver ? (s.result && s.result.end === 'clear' ? '🏆 완성!' : '도전 끝') : '진행 중') : '';
+        return `<button class="world hc" data-id="${w.id}">
+          <div class="em">${w.emoji}</div>
+          <div class="bd"><div class="nm">${w.name}<span class="chip hcchip">HARDCORE</span></div>
+          <div class="sb">${w.sub}</div>
+          <div class="st"><span>🔄 ${nextResetText()}</span></div>
+          <div class="st">${b ? `<span>🏆 내 최고 ${b.pct}% · ${fmtHMS(b.time)}</span>` : '<span class="new">이번 회차 기록 없음</span>'}${now ? `<span style="opacity:.7">${now}</span>` : ''}</div></div>
+          <div class="go">▶</div></button>`;
+      }
       if (w.kind === 'timed' && s && (s.best || fresh)) {
         st = `<div class="st"><span>🏆 최고 ${s.best || 0}구역</span>${fresh ? `<span>❌ ${s.mistakes}</span>` : ''}</div>`;
       } else if (fresh) {
@@ -142,6 +259,7 @@
     }).join('');
   }
 
+  $('btnRank') && ($('btnRank').onclick = () => showRanking(Mines.periodId()));
   $('worlds').addEventListener('click', (e) => {
     const b = e.target.closest('.world'); if (b) openGame(b.dataset.id);
   });
@@ -325,16 +443,28 @@
     place() {
       const c = this.s.camera;
       if (c && isFinite(c.x) && isFinite(c.y) && c.cell) { this.ox = c.x; this.oy = c.y; this.cell = c.cell; }
-      else { this.cell = 40; this.centerOn(0, 0, false); }
+      else this.home();
       this.placed = true; this.dirty = true;
     }
+    home() {
+      const n = this.cfg.size;
+      if (n) { this.cell = 34; this.centerOn(n / 2, n / 2, false); }
+      else { this.cell = 40; this.centerOn(0, 0, false); }
+    }
+    /** 하드코어: 보드 전체가 한 화면에 */
+    fitAll(animated) {
+      const n = this.cfg.size; if (!n) return;
+      this.cell = Math.max(3, Math.min(innerWidth - 16, innerHeight - 200) / n);
+      this.centerOn(n / 2 - 0.5, n / 2 - 0.5, animated);
+    }
+    get minCell() { const n = this.cfg.size; return n ? Math.max(3, Math.min(16, (Math.min(innerWidth, innerHeight) - 16) / n)) : 16; }
     centerOn(x, y, animated) {
       const tx = innerWidth / 2 - (x + 0.5) * this.cell, ty = innerHeight / 2 - (y + 0.5) * this.cell;
       if (!animated) { this.ox = tx; this.oy = ty; this.dirty = true; return; }
       this.anim = { fx: this.ox, fy: this.oy, tx, ty, t0: performance.now() };
     }
     zoom(f, px = innerWidth / 2, py = innerHeight / 2) {
-      const nc = Math.min(96, Math.max(16, this.cell * f)), r = nc / this.cell;
+      const nc = Math.min(96, Math.max(this.minCell, this.cell * f)), r = nc / this.cell;
       this.ox = px - (px - this.ox) * r; this.oy = py - (py - this.oy) * r;
       this.cell = nc; this.dirty = true; this.cameraMoved();
     }
@@ -354,16 +484,22 @@
       const dg = s.gems - before;
       if (dg) addGems(dg);
       if (out.rewards) { profile.magnifiers += out.rewards; saveProfile(); }
+      if (out.ended) {
+        this.changed();
+        this.saveNow();
+        hcFinish(this);
+        return;
+      }
       if (out.exploded) {
         profile.lifetimeMistakes++; saveProfile();
         sfx('boom'); haptic('heavy');
       } else if (out.solved) {
         sfx('sector'); haptic('heavy');
-        const last = s.undoStack[s.undoStack.length - 1];
-        for (const sk of (last ? last.s : [])) this.celebrate(kx(sk), ky(sk));
+        const keys = out.solvedKeys || [];
+        for (const sk of keys) this.celebrate(kx(sk), ky(sk));
         const bits = [];
         const found = [];
-        for (const sk of (last ? last.s : [])) {
+        for (const sk of (s.hardcore ? [] : keys)) {
           const pic = picOf(s.field, kx(sk), ky(sk));
           const first = out.firstSolved.includes(sk);
           const isNew = first && !(profile.pictures[pic.id] > 0);
@@ -372,10 +508,11 @@
         }
         if (out.firstSolved.length) saveProfile();
         if (found.length) bits.push(found.join(' · '));
+        if (s.hardcore) bits.push(`📊 완성도 ${s.completion}% · ⏱ ${fmtHMS(s.playSeconds)}`);
         if (this.cfg.kind === 'timed') bits.push(`⏱ +${out.solved * this.cfg.bonus}초`);
         if (out.rewards) bits.push(`🔍 돋보기 +${out.rewards}`);
         if (out.gems) bits.push(`💎 +${out.gems}`);
-        banner(out.solved > 1 ? `🎉 구역 ${out.solved}개 클리어!` : '🎉 구역 클리어!', bits.join('<br>'), s.solved.size);
+        banner(out.solved > 1 ? `🎉 구역 ${out.solved}개 클리어!` : '🎉 구역 클리어!', bits.join('<br>'), s.solved.size, s.hardcore ? 144 : 0);
       } else if (out.gems) {
         sfx('gem'); haptic('medium');
         toast(out.gems >= 5 ? `💖 하트 발견! +${out.gems}` : `💎 +${out.gems}`);
@@ -426,7 +563,7 @@
       this.dirty = true; updateHud();
     }
     flagExplosion() { this.s.flagExplosion(); sfx('flag'); haptic('medium'); this.changed(); }
-    restart() { this.s.restart(); this.cell = 40; this.centerOn(0, 0, false); this.changed(); this.saveNow(); }
+    restart() { this.s.restart(); this.home(); this.changed(); this.saveNow(); }
     changed() { this.dirty = true; updateHud(); this.scheduleSave(); }
 
     // 저장 — 한 수마다 (아주 잠깐 모았다가)
@@ -469,9 +606,9 @@
   }
 
   let bannerTimer = 0;
-  function banner(title, sub, total) {
+  function banner(title, sub, total, of) {
     const el = $('banner');
-    el.innerHTML = `<div class="b1">${title}</div>${sub ? `<div class="b2">${sub}</div>` : ''}<div class="b3">지금까지 ${total}구역 완성</div>`;
+    el.innerHTML = `<div class="b1">${title}</div>${sub ? `<div class="b2">${sub}</div>` : ''}<div class="b3">${of ? `${total} / ${of} 구역` : `지금까지 ${total}구역 완성`}</div>`;
     el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
     clearTimeout(bannerTimer); bannerTimer = setTimeout(() => el.classList.remove('on'), 2200);
   }
@@ -488,10 +625,12 @@
     game = new Game(cfg, save);
     $('home').hidden = true; $('game').hidden = false;
     $('gTitle').textContent = `${cfg.emoji} ${cfg.name}`;
+    $('game').classList.toggle('hc', cfg.kind === 'hardcore');
+    if (cfg.kind === 'hardcore' && !profile.pid) { profile.pid = newPid(); saveProfile(true); }
     resize(); game.place();
     setMode(false);
     updateHud();               // 터진 채로 저장됐으면 여기서 되돌리기 카드가 뜬다
-    if (game.s.gameOver) showOver();
+    if (game.s.gameOver) { if (game.s.hardcore) hcResult(game); else showOver(); }
     Storage.requestPersist();
   }
 
@@ -525,8 +664,10 @@
     $('aimHint').hidden = !game.aiming;
     $('hint').hidden = s.started;
     const timed = game.cfg.kind === 'timed';
-    $('timer').hidden = !(timed && s.started);
+    $('timer').hidden = !((timed || s.hardcore) && s.started);
     if (timed) { $('gTime').textContent = fmtTime(s.timeLeft); $('timer').classList.toggle('low', s.timeLeft < 20); }
+    if (s.hardcore) { $('gTime').textContent = fmtHMS(s.playSeconds); $('timer').classList.remove('low'); $('gPct').textContent = s.completion + '%'; }
+    if (s.hardcore) return;
     if (s.exploded !== null && game.aiming) { game.aiming = false; $('aimHint').hidden = true; $('btnMag').classList.remove('on'); }
     if (s.exploded !== null && !layer.querySelector('#boomCard')) showBoom();
     if (s.exploded === null && layer.querySelector('#boomCard')) closeLayer();
@@ -552,6 +693,7 @@
   }
 
   function showMenu() {
+    if (game.s.hardcore) return showHcMenu();
     const s = sheet(`<h3>${game.cfg.emoji} ${game.cfg.name}</h3>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
@@ -573,6 +715,148 @@
         v.querySelector('#rGo').onclick = () => { closeLayer(); game.restart(); };
       }
     });
+  }
+
+  function showHcMenu() {
+    const g = game, s = g.s;
+    const sh = sheet(`<h3>🔥 하드코어 · ${fmtPeriod(s.period || Mines.periodId())} 회차</h3>
+      <button class="item" data-a="fit"><span class="ic">🗺️</span>보드 전체 보기</button>
+      <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
+      <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
+      <button class="item" data-a="rank"><span class="ic">🏆</span>랭킹 보기</button>
+      ${s.started && !s.gameOver ? '<button class="item danger" data-a="giveup"><span class="ic">🏳️</span>여기서 끝내고 기록 내기</button>' : ''}
+      <div class="status">되돌리기·돋보기 없음 · 지뢰를 밟으면 그 자리에서 끝나요.<br>완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.<br>다음 초기화: ${nextResetText()}</div>`);
+    sh.addEventListener('click', (e) => {
+      const b = e.target.closest('.item'); if (!b) return;
+      const a = b.dataset.a;
+      if (a === 'fit') { closeLayer(); g.fitAll(true); }
+      else if (a === 'center') { closeLayer(); const st = s.start || [48, 48]; g.centerOn(st[0], st[1], true); }
+      else if (a === 'in') g.zoom(1.4);
+      else if (a === 'rank') showRanking(s.period || Mines.periodId());
+      else if (a === 'giveup') {
+        const v = veil(`<div class="card"><div class="big">🏳️</div><h2>여기서 끝낼까요?</h2>
+          <p>지금 완성도 ${s.completion}% · ${fmtHMS(s.playSeconds)} 로 기록돼요.\n이 판은 더 이어 할 수 없어요.</p>
+          <button class="primary" style="background:#E0343F" id="gGo">끝내고 기록 내기</button><button class="secondary" id="gNo">계속 하기</button></div>`, closeLayer);
+        v.querySelector('#gNo').onclick = closeLayer;
+        v.querySelector('#gGo').onclick = () => { closeLayer(); if (s.giveUp()) { g.changed(); g.saveNow(); hcFinish(g); } };
+      }
+    });
+  }
+
+  // ─────────────────────────── 하드코어: 끝 · 결과 · 랭킹 ───────────────────────────
+  function newPid() {
+    const a = new Uint8Array(12); (crypto || window.msCrypto).getRandomValues(a);
+    return Array.from(a, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 20);
+  }
+
+  /** 판이 끝난 순간 (지뢰 · 완성 · 포기) */
+  function hcFinish(g) {
+    const s = g.s, end = s.result.end;
+    const per = s.period, rec = { pct: s.completion, time: Math.max(1, Math.round(s.playSeconds)), end };
+    const prev = profile.hcBest[per];
+    const better = RankLib.isBetter(rec, prev);
+    if (better) profile.hcBest[per] = { ...rec, submitted: false };
+    saveProfile(true);
+    if (end === 'dead') { sfx('boom'); haptic('heavy'); }
+    else if (end === 'clear') { sfx('sector'); haptic('heavy'); setTimeout(() => sfx('sector'), 350); g.fitAll(true); }
+    else { sfx('undo'); }
+    setTimeout(() => hcResult(g, better), end === 'dead' ? 900 : end === 'clear' ? 1600 : 200);
+  }
+
+  function hcResult(g, isNewBest) {
+    if (!game || game !== g) return;
+    const s = g.s, end = (s.result && s.result.end) || 'dead', per = s.period;
+    const best = profile.hcBest[per];
+    const art = hcArt(per);
+    const head = end === 'clear' ? ['🏆', '완성!'] : end === 'giveup' ? ['🏳️', '도전 종료'] : ['💥', '지뢰를 밟았어요'];
+    const needName = !profile.nickname;
+    const canSend = best && !best.submitted;
+    const v = veil(`<div class="card hcres">
+      <div class="big">${head[0]}</div><h2>${head[1]}</h2>
+      <div class="hcstat"><div><b>${s.completion}%</b><span>완성도</span></div><div><b>${fmtHMS(s.playSeconds)}</b><span>걸린 시간</span></div></div>
+      ${end === 'clear' ? `<p>이번 회차 그림은 <b>${art.emoji} ${art.name}</b> 였어요!</p>` : ''}
+      <p class="small">${isNewBest ? '✨ 이번 회차 내 최고 기록이에요!' : best ? `이번 회차 내 최고: ${best.pct}% · ${fmtHMS(best.time)}\n더 좋은 기록일 때만 랭킹이 바뀌어요.` : ''}</p>
+      ${canSend ? `<div class="namebox"><input id="nick" placeholder="랭킹에 쓸 이름 (한글 8자)" value="${esc(profile.nickname)}" autocomplete="off" enterkeyhint="done"><span id="nickW"></span></div>
+      <button class="primary" id="hSend">🏆 랭킹에 올리기</button>` : `<button class="primary" id="hRank">🏆 랭킹 보기</button>`}
+      <div id="hMsg" class="small"></div>
+      <div class="row2"><button class="secondary" id="hAgain">🔁 새로 도전</button><button class="secondary" id="hOut">나가기</button></div>
+    </div>`);
+    const nick = v.querySelector('#nick');
+    if (nick) {
+      const upd = () => {
+        const w = RankLib.width(nick.value.trim());
+        v.querySelector('#nickW').textContent = `${Math.ceil(w / 2)}/8`;
+        v.querySelector('#nickW').classList.toggle('over', w > RankLib.NAME_MAX_WIDTH);
+      };
+      nick.addEventListener('input', upd); upd();
+      if (needName) setTimeout(() => nick.focus(), 300);
+    }
+    const send = v.querySelector('#hSend');
+    if (send) send.onclick = async () => {
+      const raw = nick.value.trim();
+      if (!raw) { v.querySelector('#hMsg').textContent = '이름을 적어 주세요'; nick.focus(); return; }
+      if (RankLib.width(raw) > RankLib.NAME_MAX_WIDTH) { v.querySelector('#hMsg').textContent = '한글 8자(영문 16자)까지 쓸 수 있어요'; return; }
+      profile.nickname = RankLib.cleanName(raw); saveProfile(true);
+      send.disabled = true; send.textContent = '올리는 중…';
+      const r = await submitBest(per);
+      if (r.ok) { closeLayer(); showRanking(per, r); }
+      else {
+        send.disabled = false; send.textContent = '🏆 다시 올려 보기';
+        v.querySelector('#hMsg').textContent = r.error === 'no server' ? '랭킹 서버가 아직 연결 전이에요. 기록은 이 기기에 남아 있어요.'
+          : r.error === 'offline' ? '인터넷이 안 돼요. 연결되면 자동으로 올라가요.' : '올리지 못했어요: ' + (r.error || '알 수 없음');
+      }
+    };
+    const rk = v.querySelector('#hRank'); if (rk) rk.onclick = () => showRanking(per);
+    v.querySelector('#hAgain').onclick = () => {
+      if (s.period !== Mines.periodId()) { closeLayer(); game.s.restart(); game.home(); game.changed(); game.saveNow(); return; }
+      closeLayer(); g.restart();
+    };
+    v.querySelector('#hOut').onclick = () => closeGame();
+  }
+
+  async function showRanking(period, fresh) {
+    const cur = Mines.periodId(), prevId = Mines.periodId(Mines.periodStart(Mines.periodStart() - 1000));
+    const mine = profile.hcBest[period];
+    const tabs = `<div class="tabs"><button class="tab ${period === cur ? 'on' : ''}" data-p="${cur}">이번 회차 ${fmtPeriod(cur)}</button><button class="tab ${period === prevId ? 'on' : ''}" data-p="${prevId}">지난 회차 ${fmtPeriod(prevId)}</button></div>`;
+    const sh = sheet(`<h3>🏆 하드코어 랭킹</h3>${tabs}
+      <div class="status" style="padding-top:0;text-align:center">${period === cur ? '다음 초기화 ' + nextResetText() : '끝난 회차'}</div>
+      <div id="rkList" class="rk"><div class="rkmsg">불러오는 중…</div></div>
+      <div class="rkme">${mine ? `내 최고: <b>${mine.pct}%</b> · ${fmtHMS(mine.time)}` : '이번 회차 내 기록 없음'} · 이름: <b>${esc(profile.nickname || '없음')}</b>
+        <button class="link" id="rkName">이름 바꾸기</button></div>`);
+    sh.querySelectorAll('.tab').forEach((b) => (b.onclick = () => showRanking(b.dataset.p)));
+    sh.querySelector('#rkName').onclick = () => renameDialog(period);
+    const box = sh.querySelector('#rkList');
+    if (!rankOn()) { box.innerHTML = '<div class="rkmsg">랭킹 서버가 아직 연결 전이에요.<br>(설정을 마치면 여기에 순위가 나와요)</div>'; return; }
+    let r = fresh;
+    if (!r) { try { r = await rankTop(period); } catch (e) { r = { ok: false, error: 'offline' }; } }
+    if (!layer.contains(box)) return;
+    if (!r || !r.ok) { box.innerHTML = `<div class="rkmsg">${r && r.error === 'offline' ? '인터넷 연결을 확인해 주세요' : '순위를 불러오지 못했어요'}</div>`; return; }
+    if (!r.top.length) { box.innerHTML = '<div class="rkmsg">아직 아무도 기록이 없어요.<br>첫 번째가 되어 보세요!</div>'; return; }
+    const medal = (n) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : n);
+    let html = r.top.map((x) => `<div class="rkr${x.me ? ' me' : ''}"><span class="rn">${medal(x.rank)}</span><span class="nm">${esc(x.name)}${x.end === 'clear' ? ' 🏆' : ''}</span><span class="pc">${x.pct}%</span><span class="tm">${fmtHMS(x.time)}</span></div>`).join('');
+    if (r.me && r.me.rank > r.top.length) html += `<div class="rkr me sep"><span class="rn">${r.me.rank}</span><span class="nm">${esc(r.me.name)}</span><span class="pc">${r.me.pct}%</span><span class="tm">${fmtHMS(r.me.time)}</span></div>`;
+    box.innerHTML = html + `<div class="rkmsg small">모두 ${r.count}명 도전</div>`;
+  }
+
+  function renameDialog(period) {
+    const v = veil(`<div class="card"><div class="big">✏️</div><h2>랭킹 이름</h2>
+      <div class="namebox"><input id="nick2" value="${esc(profile.nickname)}" placeholder="한글 8자까지" autocomplete="off"><span id="nickW2"></span></div>
+      <div id="rnMsg" class="small"></div>
+      <button class="primary" id="rnGo">저장</button><button class="secondary" id="rnNo">취소</button></div>`, closeLayer);
+    const inp = v.querySelector('#nick2');
+    const upd = () => { const w = RankLib.width(inp.value.trim()); v.querySelector('#nickW2').textContent = `${Math.ceil(w / 2)}/8`; v.querySelector('#nickW2').classList.toggle('over', w > RankLib.NAME_MAX_WIDTH); };
+    inp.addEventListener('input', upd); upd(); setTimeout(() => inp.focus(), 200);
+    v.querySelector('#rnNo').onclick = () => showRanking(period);
+    v.querySelector('#rnGo').onclick = async () => {
+      const raw = inp.value.trim();
+      if (!raw) { v.querySelector('#rnMsg').textContent = '이름을 적어 주세요'; return; }
+      if (RankLib.width(raw) > RankLib.NAME_MAX_WIDTH) { v.querySelector('#rnMsg').textContent = '한글 8자(영문 16자)까지 쓸 수 있어요'; return; }
+      profile.nickname = RankLib.cleanName(raw); saveProfile(true);
+      // 이미 낸 기록이 있으면 같은 점수로 다시 보내 이름만 바꾼다
+      const b = profile.hcBest[period];
+      if (b) { b.submitted = false; await submitBest(period); }
+      showRanking(period);
+    };
   }
 
   $('btnBack').onclick = closeGame;
@@ -631,8 +915,16 @@
     const W = innerWidth, H = innerHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = th.bg; ctx.fillRect(0, 0, W, H);
-    const x0 = Math.floor(-g.ox / c), x1 = Math.floor((W - g.ox) / c);
-    const y0 = Math.floor(-g.oy / c), y1 = Math.floor((H - g.oy) / c);
+    let x0 = Math.floor(-g.ox / c), x1 = Math.floor((W - g.ox) / c);
+    let y0 = Math.floor(-g.oy / c), y1 = Math.floor((H - g.oy) / c);
+    const N = g.cfg.size, art = s.hardcore ? hcArt(s.period) : null;
+    if (N) {   // 유한 보드: 바깥은 어둡게, 보드에는 그림자
+      ctx.fillStyle = th.dark ? '#070B18' : 'rgba(0,0,0,.18)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = th.bg; ctx.fillRect(g.ox - 4, g.oy - 4, N * c + 8, N * c + 8);
+      x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(N - 1, x1); y1 = Math.min(N - 1, y1);
+      if (x1 < x0 || y1 < y0) return;
+    }
+    const tiny = c < 10;   // 아주 작게 볼 때는 둥근 모서리·숫자를 생략해 빠르게
     const gap = Math.max(0.8, c * 0.05), rad = c * 0.18, lift = Math.max(1, c * 0.06);
     const numFont = `800 ${Math.round(c * 0.56)}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
     const emoFont = `${Math.round(c * 0.5)}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
@@ -646,14 +938,27 @@
         const alt = ((sx + sy) & 1) === 0;
         const px = g.ox + x * c + gap / 2, py = g.oy + y * c + gap / 2, w = c - gap;
 
+        if (tiny) {
+          let col;
+          if (s.exploded === k) col = '#F2545B';
+          else if (s.solved.has(key(sx, sy)) && pictureVisible(g, sx, sy, x, y)) col = art ? (hcColor(art, x, y) || th.solA) : (() => { const p2 = picOf(f, sx, sy), ch = p2.px[y - sy * SECTOR][x - sx * SECTOR]; return ch === '+' ? p2.c1 : ch === '#' ? p2.c2 : th.solA; })();
+          else if (s.revealed.has(k)) col = alt ? th.openA : th.openB;
+          else col = s.flagged.has(k) ? th.flag : (alt ? th.hidA : th.hidB);
+          ctx.fillStyle = col; ctx.fillRect(g.ox + x * c, g.oy + y * c, c - (c > 5 ? 0.6 : 0), c - (c > 5 ? 0.6 : 0));
+          continue;
+        }
         if (s.exploded === k) {
           ctx.fillStyle = '#F2545B'; rr(px, py, w, w, rad); ctx.fill();
           ctx.font = emoFont; ctx.fillText('💣', px + w / 2, py + w / 2 + c * 0.03);
         } else if (s.solved.has(key(sx, sy)) && pictureVisible(g, sx, sy, x, y)) {
           // 완성 구역 = 픽셀 그림 한 칸
-          const pic = picOf(f, sx, sy);
-          const ch = pic.px[y - sy * SECTOR][x - sx * SECTOR];
-          const col = ch === '+' ? pic.c1 : ch === '#' ? pic.c2 : th.solA;
+          let col, ch;
+          if (art) { col = hcColor(art, x, y); ch = col ? '+' : '.'; col = col || th.solA; }
+          else {
+            const pic = picOf(f, sx, sy);
+            ch = pic.px[y - sy * SECTOR][x - sx * SECTOR];
+            col = ch === '+' ? pic.c1 : ch === '#' ? pic.c2 : th.solA;
+          }
           ctx.fillStyle = col; ctx.fillRect(g.ox + x * c + 0.5, g.oy + y * c + 0.5, c - 1, c - 1);
           const mine = !s.revealed.has(k);
           if (mine) { if (c >= 24) drawMiniFlag(px + w * 0.62, py + w * 0.08, w * 0.3, ch !== '.'); }
@@ -675,7 +980,7 @@
           ctx.fillStyle = th.hidSh; rr(px, py, w, w, rad); ctx.fill();
           ctx.fillStyle = alt ? th.hidA : th.hidB; rr(px, py, w, w - lift, rad); ctx.fill();
           if (s.flagged.has(k) || s.solved.has(key(sx, sy))) drawFlag(px, py - lift / 2, w);
-          else if (c >= 20) {
+          else if (c >= 20 && !s.hardcore) {
             const v = f.gemAt(x, y);
             if (v) { ctx.font = emoFont; ctx.fillText(v >= 5 ? '💖' : '💎', px + w / 2, py + (w - lift) / 2 + c * 0.03); }
           }
@@ -715,6 +1020,7 @@
     const sx0 = fdiv(x0, SECTOR), sx1 = fdiv(x1, SECTOR), sy0 = fdiv(y0, SECTOR), sy1 = fdiv(y1, SECTOR);
     for (let sy = sy0; sy <= sy1; sy++) for (let sx = sx0; sx <= sx1; sx++) {
       if (!s.solved.has(key(sx, sy))) continue;
+      if (art && c < 12) continue;   // 하드코어 그림을 멀리서 볼 때는 테두리 없이 그림만
       const bx = g.ox + sx * SECTOR * c, by = g.oy + sy * SECTOR * c, bw = SECTOR * c;
       ctx.lineWidth = Math.max(2, c * 0.1); ctx.strokeStyle = GOLD;
       rr(bx + ctx.lineWidth / 2, by + ctx.lineWidth / 2, bw - ctx.lineWidth, bw - ctx.lineWidth, c * 0.35); ctx.stroke();
@@ -730,9 +1036,12 @@
     // 구역 경계
     ctx.strokeStyle = th.line; ctx.lineWidth = Math.max(1, c * 0.06);
     ctx.beginPath();
-    for (let x = Math.ceil(x0 / SECTOR) * SECTOR; x <= x1 + 1; x += SECTOR) { const p = g.ox + x * c; ctx.moveTo(p, 0); ctx.lineTo(p, H); }
-    for (let y = Math.ceil(y0 / SECTOR) * SECTOR; y <= y1 + 1; y += SECTOR) { const p = g.oy + y * c; ctx.moveTo(0, p); ctx.lineTo(W, p); }
+    const ly0 = N ? Math.max(0, g.oy) : 0, ly1 = N ? Math.min(H, g.oy + N * c) : H;
+    const lx0 = N ? Math.max(0, g.ox) : 0, lx1 = N ? Math.min(W, g.ox + N * c) : W;
+    for (let x = Math.ceil(x0 / SECTOR) * SECTOR; x <= x1 + 1; x += SECTOR) { const p = g.ox + x * c; ctx.moveTo(p, ly0); ctx.lineTo(p, ly1); }
+    for (let y = Math.ceil(y0 / SECTOR) * SECTOR; y <= y1 + 1; y += SECTOR) { const p = g.oy + y * c; ctx.moveTo(lx0, p); ctx.lineTo(lx1, p); }
     ctx.stroke();
+    if (N) { ctx.strokeStyle = th.dark ? '#FF6B6B' : '#D9483B'; ctx.lineWidth = 3; ctx.strokeRect(g.ox - 2, g.oy - 2, N * c + 4, N * c + 4); }
 
     drawFx(g, s, c);
   }
@@ -868,7 +1177,7 @@
     const now = performance.now(), dt = Math.min(1, (now - lastTick) / 1000); lastTick = now;
     if (!game || document.hidden) return;
     const ended = game.s.tick(dt);
-    if (game.cfg.kind === 'timed' && game.s.started) updateHud();
+    if ((game.cfg.kind === 'timed' || game.s.hardcore) && game.s.started && !game.s.gameOver) updateHud();
     if (ended) { sfx('boom'); haptic('heavy'); updateHud(); game.saveNow(); showOver(); return; }
     autosaveAcc += dt;
     if (autosaveAcc > 10 && game.s.started) { autosaveAcc = 0; game.scheduleSave(); }  // 플레이 시간·타이머
@@ -886,7 +1195,7 @@
   // ─────────────────────────── 시작 ───────────────────────────
   async function boot() {
     const p = await Storage.load('profile');
-    if (p && typeof p === 'object') profile = { ...DEFAULT_PROFILE, ...p, pictures: { ...(p.pictures || {}) } };
+    if (p && typeof p === 'object') profile = { ...DEFAULT_PROFILE, ...p, pictures: { ...(p.pictures || {}) }, hcBest: { ...(p.hcBest || {}) } };
     for (const w of WORLDS) {
       const s = await Storage.load('world:' + w.id);
       if (s) summaries[w.id] = s;
@@ -909,7 +1218,10 @@
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
     if (standalone) Storage.requestPersist();
-    window.__app = { get game() { return game; }, get profile() { return profile; }, Storage, openGame, closeGame };
+    if (!profile.pid) { profile.pid = newPid(); saveProfile(true); }
+    flushPending();
+    window.addEventListener('online', flushPending);
+    window.__app = { get game() { return game; }, get profile() { return profile; }, Storage, openGame, closeGame, showRanking, hcArt };
   }
   boot();
 })();

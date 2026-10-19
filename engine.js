@@ -12,6 +12,38 @@
   const UNDO_LIMIT = 300;
   const SAVE_UNDO = 120;      // 저장할 때 같이 남기는 되돌리기 기록 수
 
+  // ── 하드코어 ──
+  // 96×96 칸 (12×12 구역, 지뢰 16%) — 안전한 칸 약 7,700개. 보통 속도(초당 1칸 남짓)로 2시간 안팎.
+  const HC_SIZE = 96;
+  const KST = 9 * 3600e3, DAY = 86400e3;
+  const RESET_DAYS = [2, 4, 6];   // 화·목·토 (일=0)
+  const RESET_HOUR = 7;           // 오전 7시 (한국 시간)
+  /** 지금이 속한 회차의 시작 시각 (UTC ms) */
+  function periodStart(now = Date.now()) {
+    const k = new Date(now + KST);
+    const today7 = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate(), RESET_HOUR) - KST;
+    for (let i = 0; i < 9; i++) {
+      const t = today7 - i * DAY;
+      if (t <= now && RESET_DAYS.includes(new Date(t + KST).getUTCDay())) return t;
+    }
+    return today7;
+  }
+  function nextReset(now = Date.now()) {
+    const st = periodStart(now);
+    for (let i = 1; i < 9; i++) { const t = st + i * DAY; if (RESET_DAYS.includes(new Date(t + KST).getUTCDay())) return t; }
+    return st + 2 * DAY;
+  }
+  /** 회차 이름: "20261020" (그 회차가 시작된 날, 한국 날짜) */
+  function periodId(t = periodStart()) {
+    const k = new Date(t + KST);
+    return String(k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate());
+  }
+  /** 회차 번호 (그림 고르기용 — 이어지는 두 회차는 늘 다른 번호) */
+  function periodIndex(t = periodStart()) {
+    const day = Math.floor((t + KST) / DAY), wd = new Date(t + KST).getUTCDay();
+    return ((day - wd - 3) / 7) * 3 + Math.max(0, RESET_DAYS.indexOf(wd));
+  }
+
   // 좌표 ↔ 정수 키 (±100만 칸까지)
   const OFF = 1048576, MUL = 2097152;
   const key = (x, y) => (x + OFF) * MUL + (y + OFF);
@@ -39,6 +71,7 @@
     { id: 'forest', name: '깊은 숲',   emoji: '🌲', sub: '생각을 조금 더 해야 하는 보드', density: 0.19, kind: 'endless' },
     { id: 'abyss',  name: '심연',      emoji: '🌋', sub: '지뢰가 빽빽한 도전 보드', density: 0.22, kind: 'endless' },
     { id: 'daily',  name: '오늘의 보드', emoji: '📅', sub: '매일 자정에 새 지도가 열려요', density: 0.16, kind: 'daily' },
+    { id: 'hardcore', name: '하드코어', emoji: '🔥', sub: '되돌리기·아이템 없음 · 지뢰 한 번이면 끝', density: 0.16, kind: 'hardcore', size: HC_SIZE },
     { id: 'timed',  name: '타임 어택', emoji: '⏱️', sub: '3분 시작 · 구역을 완성하면 +20초', density: 0.16, kind: 'timed', start: 180, bonus: 20 },
   ];
   const world = (id) => WORLDS.find((w) => w.id === id);
@@ -52,13 +85,15 @@
   }
 
   class Field {
-    constructor(seed, density, safe) {
+    constructor(seed, density, safe, size) {
+      this.size = size || 0;
       this.seed = seed >>> 0;
       this.density = density;
       this.safe = safe || null;   // [x, y]
       this.threshold = density * 4294967296;
     }
     isMine(x, y) {
+      if (this.size && (x < 0 || y < 0 || x >= this.size || y >= this.size)) return false;
       const s = this.safe;
       if (s && Math.abs(x - s[0]) <= SAFE_R && Math.abs(y - s[1]) <= SAFE_R) return false;
       return hash(this.seed, x, y, 1) < this.threshold;
@@ -97,14 +132,17 @@
       this.cfg = cfg;
       const today = todayStamp();
       if (save && cfg.kind === 'daily' && save.day !== today) save = null;
+      if (save && cfg.kind === 'hardcore' && save.period !== periodId()) save = null;   // 회차가 바뀌면 새 판
       if (save && save.v === 1) this._load(save);
       else this._fresh(today);
     }
 
     _fresh(today) {
       const c = this.cfg;
-      this.field = new Field(freshSeed(c, today), c.density, null);
+      this.field = new Field(freshSeed(c, today), c.density, null, c.size);
       this.start = null;
+      this.period = c.kind === 'hardcore' ? periodId() : null;
+      this.result = null;     // 하드코어: { end: 'dead' | 'clear' | 'giveup' }
       this.revealed = new Set();
       this.flagged = new Set();
       this.solved = new Set();
@@ -122,7 +160,9 @@
     }
 
     _load(s) {
-      this.field = new Field(s.seed, this.cfg.density, s.start);
+      this.field = new Field(s.seed, this.cfg.density, s.start, this.cfg.size);
+      this.period = s.period ?? null;
+      this.result = s.result ?? null;
       this.start = s.start || null;
       this.solved = new Set(s.solved || []);
       this.rewarded = new Set(s.rewarded || s.solved || []);
@@ -182,11 +222,33 @@
         undo,
         timeLeft: this.timeLeft, best: this.best, playSeconds: this.playSeconds,
         gameOver: this.gameOver, day: this.day, camera: this.camera,
+        period: this.period, result: this.result,
       };
     }
 
     get started() { return !!this.start; }
-    get canUndo() { return !this.gameOver && this.undoStack.length > 0; }
+    get hardcore() { return this.cfg.kind === 'hardcore'; }
+    get canUndo() { return !this.hardcore && !this.gameOver && this.undoStack.length > 0; }
+    inBounds(x, y) { const n = this.cfg.size; return !n || (x >= 0 && y >= 0 && x < n && y < n); }
+    /** 하드코어: 안전한 칸 전체 수 (한 번 세어 둔다) */
+    get totalSafe() {
+      if (this._totalSafe && this._totalSafeSeed === this.field.seed && this._totalSafeStart === this.start) return this._totalSafe;
+      const n = this.cfg.size; let t = 0;
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!this.field.isMine(x, y)) t++;
+      this._totalSafe = t; this._totalSafeSeed = this.field.seed; this._totalSafeStart = this.start;
+      return t;
+    }
+    /** 하드코어: 완성도 % (소수 첫째 자리) */
+    get completion() {
+      if (!this.hardcore || !this.start) return 0;
+      return Math.floor((this.revealed.size / this.totalSafe) * 1000) / 10;
+    }
+    /** 하드코어: 포기 — 지금까지의 완성도로 끝낸다 */
+    giveUp() {
+      if (!this.hardcore || this.gameOver || !this.start) return false;
+      this.gameOver = true; this.result = { end: 'giveup' }; this.undoStack = [];
+      return true;
+    }
     isRevealed(x, y) { return this.revealed.has(key(x, y)); }
     isFlagged(x, y) { return this.flagged.has(key(x, y)); }
     isSolved(sx, sy) { return this.solved.has(key(sx, sy)); }
@@ -203,7 +265,7 @@
     /** 파기. 이미 열린 숫자 칸이면 깃발 수가 맞을 때 주변을 한꺼번에 연다. */
     reveal(x, y) {
       const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0, firstSolved: [] };
-      if (this.gameOver || this.exploded !== null) return out;
+      if (this.gameOver || this.exploded !== null || !this.inBounds(x, y)) return out;
       const k = key(x, y);
       if (this.flagged.has(k)) return out;
       if (!this.start) { this.start = [x, y]; this.field.safe = this.start; }
@@ -215,6 +277,7 @@
         const targets = [];
         let flags = 0;
         neighbors(x, y, (nx, ny) => {
+          if (!this.inBounds(nx, ny)) return;
           const nk = key(nx, ny);
           if (this.flagged.has(nk)) flags++;
           else if (!this.revealed.has(nk)) targets.push([nx, ny]);
@@ -236,7 +299,7 @@
 
     toggleFlag(x, y) {
       const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0, firstSolved: [] };
-      if (!this.start || this.gameOver || this.exploded !== null) return out;
+      if (!this.start || this.gameOver || this.exploded !== null || !this.inBounds(x, y)) return out;
       const k = key(x, y);
       if (this.revealed.has(k)) return out;
       const move = { r: [], fa: [], fr: [], s: [], g: 0, t: 0, e: null };
@@ -247,7 +310,7 @@
 
     /** 되돌리기 — 광고 없이, 횟수 제한 없이. 실수 횟수는 줄지 않는다. */
     undo() {
-      if (this.gameOver || !this.undoStack.length) return false;
+      if (this.hardcore || this.gameOver || !this.undoStack.length) return false;
       const m = this.undoStack.pop();
       for (const k of m.r) this.revealed.delete(k);
       for (const k of m.fa) this.flagged.delete(k);
@@ -273,6 +336,7 @@
     tick(dt) {
       if (!this.start || this.gameOver || this.exploded !== null) return false;
       this.playSeconds += dt;
+      if (this.hardcore) return false;
       if (this.cfg.kind !== 'timed') return false;
       this.timeLeft -= dt;
       if (this.timeLeft <= 0) {
@@ -296,12 +360,13 @@
       const stack = [x, y];
       while (stack.length) {
         const cy = stack.pop(), cx = stack.pop();
+        if (!this.inBounds(cx, cy)) continue;
         const k = key(cx, cy);
         if (this.revealed.has(k) || this.flagged.has(k)) continue;
         if (f.isMine(cx, cy)) continue;
         this.revealed.add(k);
         move.r.push(k);
-        if (move.r.length >= FLOOD_CAP) break;
+        if (!this.cfg.size && move.r.length >= FLOOD_CAP) break;
         if (f.count(cx, cy) === 0) neighbors(cx, cy, (nx, ny) => stack.push(nx, ny));
       }
     }
@@ -311,14 +376,14 @@
       const touched = new Set();
       for (const k of move.r) {
         const x = kx(k), y = ky(k);
-        move.g += f.gemAt(x, y);
+        if (!this.hardcore) move.g += f.gemAt(x, y);
         touched.add(key(fdiv(x, SECTOR), fdiv(y, SECTOR)));
       }
       for (const sk of touched) {
         if (this.solved.has(sk)) continue;
         if (this.sectorClear(kx(sk), ky(sk))) {
           this.solved.add(sk); move.s.push(sk);
-          if (!this.rewarded.has(sk)) { this.rewarded.add(sk); out.rewards++; out.firstSolved.push(sk); }
+          if (!this.hardcore && !this.rewarded.has(sk)) { this.rewarded.add(sk); out.rewards++; out.firstSolved.push(sk); }
         }
       }
       this.gems += move.g;
@@ -330,8 +395,14 @@
         this.exploded = move.e;
         this.mistakes++;
         out.exploded = true;
+        if (this.hardcore) { this.gameOver = true; this.result = { end: 'dead' }; out.ended = 'dead'; }
+      }
+      if (this.hardcore && !this.gameOver && this.start && this.revealed.size >= this.totalSafe) {
+        this.gameOver = true; this.result = { end: 'clear' }; out.ended = 'clear';
       }
       if (!move.r.length && !move.fa.length && !move.fr.length && move.e === null) return out;
+      out.solvedKeys = move.s;
+      if (this.hardcore) { out.changed = true; out.solved = move.s.length; return out; }   // 되돌리기 기록 없음
       this.undoStack.push(move);
       if (this.undoStack.length > UNDO_LIMIT) this.undoStack.splice(0, this.undoStack.length - UNDO_LIMIT);
       out.changed = true;
@@ -349,7 +420,7 @@
     }
   }
 
-  const api = { SECTOR, SAFE_R, FLOOD_CAP, WORLDS, world, key, kx, ky, fdiv, hash, Field, Session, todayStamp, neighbors };
+  const api = { HC_SIZE, periodStart, nextReset, periodId, periodIndex, SECTOR, SAFE_R, FLOOD_CAP, WORLDS, world, key, kx, ky, fdiv, hash, Field, Session, todayStamp, neighbors };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Mines = api;
 })(typeof window !== 'undefined' ? window : globalThis);

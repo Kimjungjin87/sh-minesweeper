@@ -5,7 +5,7 @@
  *   (게임 기록은 IndexedDB·localStorage 에 따로 있어서 업데이트와 무관하게 남는다)
  */
 const CACHE = 'sh-mines';
-const FILES = ['./', './index.html', './engine.js', './pictures.js', './storage.js', './app.js', './manifest.webmanifest',
+const FILES = ['./', './index.html', './config.js', './ranklib.js', './engine.js', './pictures.js', './storage.js', './app.js', './manifest.webmanifest',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png'];
 const NET_TIMEOUT = 3500;   // 이 시간 안에 안 오면 담아 둔 것으로 연다
 

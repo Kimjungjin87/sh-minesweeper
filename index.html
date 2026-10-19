@@ -157,6 +157,40 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .pic .pc{font-size:11px;font-weight:700;color:var(--sub)}
 .pic.locked .pn{color:var(--sub)}
 #banner .b2{line-height:1.45}
+#game.hc .nohc{display:none!important}
+#game:not(.hc) .hconly{display:none!important}
+.world.hc{background:linear-gradient(135deg,color-mix(in srgb,#E2463F 13%,var(--card)),var(--card) 60%);box-shadow:inset 0 0 0 2px color-mix(in srgb,#E2463F 45%,transparent)}
+.world.hc .em{background:color-mix(in srgb,#E2463F 16%,transparent)}
+.hcchip{background:#E2463F!important;color:#fff;letter-spacing:.5px}
+.world .st .new{color:var(--accent)}
+.hcres .hcstat{display:flex;gap:10px;margin:10px 0 8px}
+.hcres .hcstat > div{flex:1;background:color-mix(in srgb,var(--text) 6%,transparent);border-radius:14px;padding:10px 4px}
+.hcres .hcstat b{display:block;font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+.hcres .hcstat span{font-size:12px;color:var(--sub);font-weight:700}
+.card .small,.small{font-size:13px;color:var(--sub);line-height:1.5;white-space:pre-line;margin:6px 0}
+.namebox{position:relative;margin:6px 0 10px}
+.namebox input{width:100%;height:50px;border-radius:14px;border:2px solid color-mix(in srgb,var(--text) 15%,transparent);background:var(--bg);color:var(--text);
+  font:inherit;font-size:17px;font-weight:700;padding:0 54px 0 14px;-webkit-user-select:text;user-select:text;outline:none}
+.namebox input:focus{border-color:var(--accent)}
+.namebox span{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:800;color:var(--sub)}
+.namebox span.over{color:#E0343F}
+.row2{display:flex;gap:8px;margin-top:4px}.row2 .secondary{flex:1}
+.tabs{display:flex;gap:6px;background:color-mix(in srgb,var(--text) 7%,transparent);border-radius:12px;padding:4px;margin-bottom:8px}
+.tab{flex:1;height:36px;border-radius:9px;font-size:13.5px;font-weight:800;color:var(--sub)}
+.tab.on{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.rk{min-height:120px}
+.rkr{display:flex;align-items:center;gap:8px;padding:11px 6px;border-bottom:1px solid color-mix(in srgb,var(--text) 8%,transparent);font-size:15px}
+.rkr .rn{width:30px;text-align:center;font-weight:900;font-size:16px}
+.rkr .nm{flex:1;font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rkr .pc{font-weight:900;width:62px;text-align:right;font-variant-numeric:tabular-nums}
+.rkr .tm{width:70px;text-align:right;color:var(--sub);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums}
+.rkr.me{background:color-mix(in srgb,var(--accent) 14%,transparent);border-radius:10px}
+.rkr.sep{margin-top:8px}
+.rkmsg{text-align:center;color:var(--sub);font-weight:700;padding:28px 0 10px;line-height:1.6}
+.rkmsg.small{padding:12px 0 0;font-size:12.5px}
+.rkme{font-size:13px;color:var(--sub);text-align:center;padding:12px 0 2px;line-height:1.7}
+.rkme b{color:var(--text)}
+.link{color:var(--accent);font-weight:800;text-decoration:underline;font-size:13px;margin-left:4px}
 .status{font-size:12.5px;color:var(--sub);line-height:1.6;padding:10px 4px 0}
 </style>
 </head>
@@ -182,6 +216,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
       <div class="total"><div class="i">❌</div><div class="v" id="tMistakes">0</div><div class="l">전체 실수</div></div>
     </div>
     <div class="worlds" id="worlds"></div>
+    <button class="row" id="btnRank"><span>🏆</span><span>하드코어 랭킹</span><span class="sp"></span><span class="ch">›</span></button>
     <button class="row" id="btnAlbum"><span>🖼</span><span>그림 도감</span><span class="sp"></span><span id="albumCount" style="opacity:.6">0/0</span><span class="ch">›</span></button>
     <button class="row" id="btnThemes"><span>🎨</span><span id="themeName">보드 테마</span><span class="sp"></span><span class="ch">›</span></button>
     <div class="howto">
@@ -194,6 +229,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
       • 구역을 다 풀면 그 자리에 🖼 픽셀 그림이 나타나요 (그림 도감에 모여요)<br>
       • 구역을 완성할 때마다 🔍 돋보기 1개! 누른 칸 둘레 3×3의 지뢰를 5초간 비춰 봐요<br>
       • 지뢰를 밟으면 실수로 세고, 광고 없이 되돌릴 수 있어요<br>
+      • 🔥 하드코어: 되돌리기·돋보기 없이 96×96 보드에 도전! 화·목·토 아침 7시에 새 그림으로 바뀌고 랭킹에 올라가요<br>
       • 한 수마다 자동 저장돼요. 언제 꺼도 그 자리에서 이어져요
     </div>
   </div>
@@ -206,9 +242,10 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
     <button class="pill btn" id="btnBack" aria-label="나가기">‹</button>
     <div class="pill title" id="gTitle"></div>
     <div class="sp"></div>
-    <div class="pill">💎<span class="n" id="gGems">0</span></div>
+    <div class="pill nohc">💎<span class="n" id="gGems">0</span></div>
+    <div class="pill hconly">📊<span class="n" id="gPct">0%</span></div>
     <div class="pill">🧩<span class="n" id="gSectors">0</span></div>
-    <div class="pill">❌<span class="n" id="gMistakes">0</span></div>
+    <div class="pill nohc">❌<span class="n" id="gMistakes">0</span></div>
   </div>
   <div class="pill" id="timer" hidden>⏱ <span class="n" id="gTime">3:00</span></div>
   <div id="saved">✓ 저장됨</div>
@@ -217,8 +254,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
   <div id="banner"></div>
   <div id="aimHint" hidden><b>🔍 들여다볼 곳을 누르세요</b><span>누른 칸 둘레 3×3의 지뢰가 5초간 보여요 · 돋보기를 다시 누르면 취소</span></div>
   <div class="hud bot">
-    <button class="tool" id="btnUndo"><span class="ic">↶</span>되돌리기</button>
-    <button class="tool" id="btnMag"><span class="ic">🔍</span>돋보기 <span class="badge" id="magN">0</span></button>
+    <button class="tool nohc" id="btnUndo"><span class="ic">↶</span>되돌리기</button>
+    <button class="tool nohc" id="btnMag"><span class="ic">🔍</span>돋보기 <span class="badge" id="magN">0</span></button>
     <button id="mode"><span class="ic" id="modeIc">⛏️</span><span><div class="t1" id="modeT1">파기 모드</div><div class="t2" id="modeT2">길게 누르면 깃발</div></span></button>
     <button class="tool" id="btnMenu"><span class="ic">⋯</span>메뉴</button>
   </div>
@@ -227,7 +264,9 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 <div id="layer"></div>
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 
+<script src="config.js"></script>
 <script src="engine.js"></script>
+<script src="ranklib.js"></script>
 <script src="pictures.js"></script>
 <script src="storage.js"></script>
 <script src="app.js"></script>

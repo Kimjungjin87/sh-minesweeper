@@ -9,7 +9,7 @@ for (const [x, y] of [[0, 0], [-1, -1], [123456, -98765], [-900000, 7]]) {
 
 for (const cfg of M.WORLDS) {
   const s = new M.Session(cfg, null);
-  const o = s.reveal(3, -5);
+  const o = cfg.kind === 'hardcore' ? s.reveal(40, 40) : s.reveal(3, -5);
   ok(o.changed && !o.exploded && s.revealed.size >= 9, `${cfg.id} first tap opens ${s.revealed.size}`);
   let bad = 0, open0 = 0;
   for (const k of s.revealed) {
@@ -135,6 +135,54 @@ for (const id of ['meadow', 'trail', 'abyss']) {
 const big = new M.Session(M.world('meadow'), null); big.reveal(0, 0);
 for (let i = 0; i < 40; i++) { const k = [...big.revealed][Math.floor(Math.random() * big.revealed.size)]; for (let d = 1; d < 30; d++) { const x = M.kx(k) + d, y = M.ky(k); if (!big.field.isMine(x, y)) big.reveal(x, y); if (big.exploded !== null) { big.undo(); break; } } }
 console.log(`     save size for ${big.revealed.size} cells: ${(JSON.stringify(big.toSave()).length / 1024).toFixed(1)} KB`);
+
+// ── 하드코어 ──
+{
+  const H = M.world('hardcore');
+  // 회차: 화·목·토 07:00 (KST)
+  const at = (iso) => Date.parse(iso);
+  ok(M.periodId(M.periodStart(at('2026-10-20T06:59:00+09:00'))) === '20261017', 'Tue 06:59 → Sat 회차');
+  ok(M.periodId(M.periodStart(at('2026-10-20T07:00:00+09:00'))) === '20261020', 'Tue 07:00 → 새 회차');
+  ok(M.periodId(M.periodStart(at('2026-10-21T23:00:00+09:00'))) === '20261020', 'Wed → Tue 회차');
+  ok(M.periodId(M.periodStart(at('2026-10-22T07:30:00+09:00'))) === '20261022', 'Thu 07:30');
+  ok(M.periodId(M.periodStart(at('2026-10-26T12:00:00+09:00'))) === '20261024', 'Mon → Sat 회차');
+  ok(new Date(M.nextReset(at('2026-10-24T08:00:00+09:00'))).toISOString() === '2026-10-26T22:00:00.000Z', 'Sat → 다음은 화 07:00');
+  const idx = []; let t0 = at('2026-10-01T00:00:00+09:00');
+  for (let i = 0; i < 12; i++) { t0 = M.nextReset(t0); idx.push(M.periodIndex(t0)); }
+  ok(idx.every((v, i) => i === 0 || v === idx[i - 1] + 1), 'periodIndex 연속 ' + idx.join(','));
+
+  const h = new M.Session(H, null);
+  ok(h.reveal(-1, 5).changed === false, 'outside board ignored');
+  const o = h.reveal(48, 48);
+  ok(o.changed && h.revealed.size >= 9 && [...h.revealed].every((k) => h.inBounds(M.kx(k), M.ky(k))), `hc opens in bounds (${h.revealed.size})`);
+  ok(h.totalSafe > 7000 && h.totalSafe < 8200, `totalSafe ${h.totalSafe}`);
+  ok(h.completion > 0 && h.completion < 100, `completion ${h.completion}%`);
+  ok(!h.canUndo && h.undo() === false, 'no undo in hardcore');
+  ok(h.gems === 0, 'no gems in hardcore');
+  h.tick(12.5); ok(Math.abs(h.playSeconds - 12.5) < 1e-9, 'time counts up');
+  // 지뢰 → 끝
+  let mine = null; for (const k of h.revealed) { M.neighbors(M.kx(k), M.ky(k), (a, b) => { if (!mine && h.field.isMine(a, b)) mine = [a, b]; }); if (mine) break; }
+  const pct = h.completion;
+  const d = h.reveal(...mine);
+  ok(d.exploded && d.ended === 'dead' && h.gameOver && h.result.end === 'dead', 'mine ends run');
+  ok(h.completion === pct && !h.reveal(48, 50).changed, 'frozen after death');
+  h.tick(100); ok(Math.abs(h.playSeconds - 12.5) < 1e-9, 'clock stops after death');
+  const back = new M.Session(H, JSON.parse(JSON.stringify(h.toSave())));
+  ok(back.gameOver && back.result.end === 'dead' && back.completion === pct, 'death survives reload (no refresh escape)');
+  // 지난 회차 저장본은 버린다
+  const old = h.toSave(); old.period = '20200101';
+  ok(new M.Session(H, old).revealed.size === 0, 'stale period resets');
+  // 끝까지 다 풀기
+  const c = new M.Session(H, null); c.reveal(10, 10);
+  let end = null;
+  for (let y = 0; y < 96 && !end; y++) for (let x = 0; x < 96 && !end; x++)
+    if (!c.field.isMine(x, y) && !c.isRevealed(x, y)) { const r = c.reveal(x, y); if (r.ended) end = r.ended; }
+  ok(end === 'clear' && c.completion === 100 && c.result.end === 'clear', 'clear at 100%');
+  ok(c.solved.size === 144, `all 144 sectors solved (${c.solved.size})`);
+  // 포기
+  const g = new M.Session(H, null); g.reveal(5, 5);
+  ok(g.giveUp() && g.gameOver && g.result.end === 'giveup', 'give up');
+}
 
 console.log(fail ? `${fail} FAILURES` : 'ALL PASS');
 process.exit(fail ? 1 : 0);
