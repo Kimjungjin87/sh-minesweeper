@@ -100,8 +100,12 @@ const ok = (c, m) => { if (!c) { fail++; console.log('FAIL', m); } else console.
   await page.touchscreen.tap(vp.width / 2, vp.height / 2);
   await page.waitForTimeout(150);
   const last = await page.evaluate(() => {
-    const s = __app.game.s; let lastCell = null;
-    for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) if (!s.field.isMine(x, y) && !s.isRevealed(x, y)) { if (lastCell) s.reveal(...lastCell); lastCell = [x, y]; }
+    const s = __app.game.s;
+    const left = () => { const r = []; for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) if (!s.field.isMine(x, y) && !s.isRevealed(x, y)) r.push([x, y]); return r; };
+    // 끝 칸: 이웃에 0인 칸이 없어서 다른 칸을 열 때 함께 열리지 않는 칸
+    const isolated = ([x, y]) => { let ok2 = true; Mines.neighbors(x, y, (a, b) => { if (a >= 0 && b >= 0 && a < 96 && b < 96 && !s.field.isMine(a, b) && s.field.count(a, b) === 0) ok2 = false; }); return ok2; };
+    const lastCell = left().find(isolated);
+    for (const c of left()) if (c[0] !== lastCell[0] || c[1] !== lastCell[1]) if (!s.isRevealed(...c)) s.reveal(...c);
     s.playSeconds = 5400; __app.game.centerOn(lastCell[0], lastCell[1], false); __app.game.cell = 34; __app.game.centerOn(lastCell[0], lastCell[1], false);
     return lastCell;
   });

@@ -73,6 +73,32 @@ ok(s2.revealed.size === 0 && s2.solved.size === 0 && s2.gems === 0, 'full undo t
   ok(q.peek(0, 0).length === 0, 'peek skips revealed cells');
 }
 
+// 완성 구역 옆 숫자칸: 완성 구역의 지뢰를 깃발로 쳐서 주변 열기가 된다 (선화 피드백)
+{
+  let done = false;
+  for (let tries = 0; tries < 30 && !done; tries++) {
+    const q = new M.Session(trail, null); q.reveal(4, 4);
+    for (let i = 0; i < 100 && !q.isSolved(0, 0); i++) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (!q.field.isMine(x, y) && !q.isRevealed(x, y)) q.reveal(x, y);
+    // 오른쪽 이웃 구역의 x=8 칸 중, 이웃 지뢰가 전부 완성 구역(x=7) 안에 있는 숫자칸
+    for (let y = 1; y < 7 && !done; y++) {
+      const x = 8;
+      if (q.field.isMine(x, y) || !q.field.count(x, y)) continue;
+      let allLeft = true, hiddenSafe = 0;
+      M.neighbors(x, y, (a, b) => { if (q.field.isMine(a, b) && a !== 7) allLeft = false; if (!q.field.isMine(a, b) && !q.isRevealed(a, b) && a > 7) hiddenSafe++; });
+      if (!allLeft || !hiddenSafe) continue;
+      if (!q.isRevealed(x, y)) { if (q.reveal(x, y).exploded) break; }
+      const c = q.revealed.size, o = q.reveal(x, y);
+      ok(!o.exploded && q.revealed.size > c, 'chord next to solved sector counts its mines as flags');
+      done = true;
+    }
+    if (q.isSolved(0, 0)) {
+      let mineIn = null; for (let y = 0; y < 8 && !mineIn; y++) for (let x = 0; x < 8 && !mineIn; x++) if (q.field.isMine(x, y)) mineIn = [x, y];
+      if (mineIn) { ok(!q.reveal(...mineIn).exploded && q.mistakes === 0, 'tapping auto-flag in solved sector is safe'); ok(!q.toggleFlag(...mineIn).changed, 'no manual flag inside solved sector'); }
+    }
+  }
+  ok(done, 'solved-sector chord scenario found');
+}
+
 // 숫자칸 열기
 const s3 = new M.Session(M.world('abyss'), null);
 s3.reveal(0, 0);

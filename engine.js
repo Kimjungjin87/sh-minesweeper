@@ -252,6 +252,10 @@
     isRevealed(x, y) { return this.revealed.has(key(x, y)); }
     isFlagged(x, y) { return this.flagged.has(key(x, y)); }
     isSolved(sx, sy) { return this.solved.has(key(sx, sy)); }
+    /** 완성된 구역 안의 칸인가 (그 구역의 지뢰는 자동 깃발로 친다) */
+    inSolved(x, y) { return this.solved.has(key(fdiv(x, SECTOR), fdiv(y, SECTOR))); }
+    /** 깃발로 칠 칸: 직접 꽂은 깃발 + 완성 구역의 지뢰 */
+    isMarked(x, y) { return this.flagged.has(key(x, y)) || (this.inSolved(x, y) && !this.revealed.has(key(x, y))); }
 
     /** 돋보기: (cx, cy) 를 가운데로 한 3×3 에서 아직 안 열린 칸들의 지뢰 여부 */
     peek(cx, cy) {
@@ -268,6 +272,7 @@
       if (this.gameOver || this.exploded !== null || !this.inBounds(x, y)) return out;
       const k = key(x, y);
       if (this.flagged.has(k)) return out;
+      if (!this.revealed.has(k) && this.inSolved(x, y)) return out;   // 완성 구역의 지뢰(자동 깃발)는 눌러도 안 터진다
       if (!this.start) { this.start = [x, y]; this.field.safe = this.start; }
 
       const move = { r: [], fa: [], fr: [], s: [], g: 0, t: 0, e: null };
@@ -279,7 +284,7 @@
         neighbors(x, y, (nx, ny) => {
           if (!this.inBounds(nx, ny)) return;
           const nk = key(nx, ny);
-          if (this.flagged.has(nk)) flags++;
+          if (this.isMarked(nx, ny)) flags++;
           else if (!this.revealed.has(nk)) targets.push([nx, ny]);
         });
         if (!targets.length || !(n === 0 || flags === n)) return out;
@@ -301,7 +306,7 @@
       const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0, firstSolved: [] };
       if (!this.start || this.gameOver || this.exploded !== null || !this.inBounds(x, y)) return out;
       const k = key(x, y);
-      if (this.revealed.has(k)) return out;
+      if (this.revealed.has(k) || this.inSolved(x, y)) return out;
       const move = { r: [], fa: [], fr: [], s: [], g: 0, t: 0, e: null };
       if (this.flagged.has(k)) { this.flagged.delete(k); move.fr.push(k); }
       else { this.flagged.add(k); move.fa.push(k); }

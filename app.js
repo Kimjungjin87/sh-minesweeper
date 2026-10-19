@@ -147,7 +147,7 @@
 
   // ─────────────────────────── 상태 ───────────────────────────
   const DEFAULT_PROFILE = { wallet: 0, lifetimeGems: 0, lifetimeMistakes: 0, theme: 'mint', unlocked: ['mint'],
-    introSeen: false, sound: true, haptic: true, magnifiers: 0, pictures: {},
+    introSeen: false, sound: true, soundInSilent: false, haptic: true, magnifiers: 0, pictures: {},
     pid: '', nickname: '', hcBest: {}, hcPending: null };
   let profile = { ...DEFAULT_PROFILE };
   const summaries = {};            // 보드 id → 저장본 (홈 화면 통계용)
@@ -172,13 +172,37 @@
   }
 
   // ─────────────────────────── 소리 · 진동 ───────────────────────────
-  let actx = null;
+  let actx = null, master = null, unlocked = false;
+  /** iOS: 무음 스위치를 켜 둬도 소리가 나게 할지 (설정) */
+  function applyAudioSession() {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = profile.soundInSilent ? 'playback' : 'ambient';
+    } catch (e) {}
+  }
   function audio() {
     if (!profile.sound) return null;
-    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
-    if (actx.state === 'suspended') actx.resume();
+    if (!actx) {
+      try {
+        applyAudioSession();
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        master = actx.createGain(); master.gain.value = 1.6; master.connect(actx.destination);
+      } catch (e) { return null; }
+    }
+    if (actx.state !== 'running') actx.resume().catch(() => {});
     return actx;
   }
+  /** iOS 는 손가락을 '뗄 때'의 동작 안에서만 소리를 켜 준다 → 무음 소리를 한 번 틀어 잠금을 푼다 */
+  function unlockAudio() {
+    const a = audio(); if (!a) return;
+    if (unlocked && a.state === 'running') return;
+    try {
+      const b = a.createBuffer(1, 1, 22050), src = a.createBufferSource();
+      src.buffer = b; src.connect(a.destination); src.start(0);
+      a.resume().then(() => { unlocked = a.state === 'running'; }).catch(() => {});
+    } catch (e) {}
+  }
+  ['touchend', 'pointerup', 'click', 'keydown'].forEach((ev) => document.addEventListener(ev, unlockAudio, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && actx) { unlocked = false; } });
   function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, delay = 0) {
     const a = audio(); if (!a) return;
     const t = a.currentTime + delay;
@@ -187,7 +211,7 @@
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+    o.connect(g).connect(master || a.destination); o.start(t); o.stop(t + dur + 0.02);
   }
   const SFX = {
     dig: () => tone(520, 0.06, 'triangle', 0.08, 0.6),
@@ -324,6 +348,7 @@
     const last = Storage.lastSavedAt ? new Date(Storage.lastSavedAt).toLocaleTimeString('ko-KR') : '아직 없음';
     const s = sheet(`<h3>설정</h3>
       <button class="item" data-a="sound"><span class="ic">🔊</span>소리<span class="sp"></span><span class="switch ${profile.sound ? 'on' : ''}"></span></button>
+      <button class="item" data-a="soundInSilent"><span class="ic">🔕</span><span>무음 모드에서도 소리<div class="note">켜면 아이폰 무음 스위치와 상관없이 소리가 나요 (보던 영상 소리는 잠시 멈출 수 있어요)</div></span><span class="sp"></span><span class="switch ${profile.soundInSilent ? 'on' : ''}"></span></button>
       <button class="item" data-a="haptic"><span class="ic">📳</span>진동<span class="sp"></span><span class="switch ${profile.haptic ? 'on' : ''}"></span></button>
       <button class="item" data-a="export"><span class="ic">💾</span><span>백업 파일 내보내기<div class="note">앱을 지우거나 폰을 바꿀 때 이 파일로 이어 할 수 있어요</div></span></button>
       <button class="item" data-a="import"><span class="ic">📂</span><span>백업 파일 불러오기<div class="note">지금 기록을 백업 내용으로 바꿔요</div></span></button>
@@ -336,9 +361,10 @@
     s.addEventListener('click', async (e) => {
       const b = e.target.closest('.item'); if (!b) return;
       const a = b.dataset.a;
-      if (a === 'sound' || a === 'haptic') {
+      if (a === 'sound' || a === 'haptic' || a === 'soundInSilent') {
         profile[a] = !profile[a]; saveProfile(true);
         b.querySelector('.switch').classList.toggle('on', profile[a]);
+        if (a === 'soundInSilent') { applyAudioSession(); if (actx) { try { actx.close(); } catch (e) {} actx = null; master = null; unlocked = false; } unlockAudio(); sfx('gem'); }
         if (a === 'sound' && profile.sound) sfx('gem');
         if (a === 'haptic' && profile.haptic) haptic('medium');
       } else if (a === 'export') exportBackup();
@@ -631,6 +657,10 @@
     setMode(false);
     updateHud();               // 터진 채로 저장됐으면 여기서 되돌리기 카드가 뜬다
     if (game.s.gameOver) { if (game.s.hardcore) hcResult(game); else showOver(); }
+    if (!profile.soundTipShown && profile.sound) {
+      profile.soundTipShown = true; saveProfile();
+      setTimeout(() => toast('🔊 소리가 안 나면 메뉴 → 설정에서 켜 주세요'), 600);
+    }
     Storage.requestPersist();
   }
 
@@ -901,12 +931,18 @@
     return performance.now() - f.t0 > 120 + d * RIPPLE_MS;
   }
 
-  function drawMiniFlag(x, y, w, onColor) {
-    ctx.save(); ctx.globalAlpha = 0.85;
-    ctx.fillStyle = onColor ? '#FFFFFF' : th.pole;
-    ctx.fillRect(x, y, Math.max(1, w * 0.12), w);
-    ctx.fillStyle = onColor ? '#FFFFFF' : th.flag;
-    ctx.beginPath(); ctx.moveTo(x + w * 0.12, y); ctx.lineTo(x + w * 0.85, y + w * 0.25); ctx.lineTo(x + w * 0.12, y + w * 0.5); ctx.closePath(); ctx.fill();
+  /** 완성 구역의 지뢰 칸: 그림 위에 흰 동그라미 + 빨간 깃발 (어디서나 또렷하게) */
+  function drawSolvedFlag(px, py, w) {
+    const r = w * 0.36, cx = px + w / 2, cy = py + w / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = Math.max(1, w * 0.05); ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.stroke();
+    const fw = r * 1.3, fx = cx - fw * 0.42, fy = cy - fw * 0.5;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(fx, fy, Math.max(1.2, fw * 0.12), fw);
+    ctx.fillStyle = '#E94F64';
+    ctx.beginPath(); ctx.moveTo(fx + fw * 0.12, fy); ctx.lineTo(fx + fw * 0.95, fy + fw * 0.28); ctx.lineTo(fx + fw * 0.12, fy + fw * 0.56); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
@@ -941,6 +977,7 @@
         if (tiny) {
           let col;
           if (s.exploded === k) col = '#F2545B';
+          else if (s.solved.has(key(sx, sy)) && pictureVisible(g, sx, sy, x, y) && !s.revealed.has(k) && c >= 6) col = '#FFFFFF';
           else if (s.solved.has(key(sx, sy)) && pictureVisible(g, sx, sy, x, y)) col = art ? (hcColor(art, x, y) || th.solA) : (() => { const p2 = picOf(f, sx, sy), ch = p2.px[y - sy * SECTOR][x - sx * SECTOR]; return ch === '+' ? p2.c1 : ch === '#' ? p2.c2 : th.solA; })();
           else if (s.revealed.has(k)) col = alt ? th.openA : th.openB;
           else col = s.flagged.has(k) ? th.flag : (alt ? th.hidA : th.hidB);
@@ -961,7 +998,7 @@
           }
           ctx.fillStyle = col; ctx.fillRect(g.ox + x * c + 0.5, g.oy + y * c + 0.5, c - 1, c - 1);
           const mine = !s.revealed.has(k);
-          if (mine) { if (c >= 24) drawMiniFlag(px + w * 0.62, py + w * 0.08, w * 0.3, ch !== '.'); }
+          if (mine) { if (c >= 12) drawSolvedFlag(px, py, w); }
           else if (c >= 24) {
             const n = f.count(x, y);
             if (n) {
