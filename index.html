@@ -150,6 +150,13 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .theme .pv i{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:900}
 .theme .nm{font-size:17px;font-weight:900}.theme .pr{font-size:13px;font-weight:700;color:var(--sub)}
 .theme .sp{flex:1}
+.album{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.pic{background:color-mix(in srgb,var(--text) 5%,transparent);border-radius:14px;padding:8px 6px 7px;text-align:center}
+.pic .art{aspect-ratio:1;border-radius:6px;overflow:hidden}
+.pic .pn{font-size:12px;font-weight:800;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pic .pc{font-size:11px;font-weight:700;color:var(--sub)}
+.pic.locked .pn{color:var(--sub)}
+#banner .b2{line-height:1.45}
 .status{font-size:12.5px;color:var(--sub);line-height:1.6;padding:10px 4px 0}
 </style>
 </head>
@@ -175,6 +182,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
       <div class="total"><div class="i">❌</div><div class="v" id="tMistakes">0</div><div class="l">전체 실수</div></div>
     </div>
     <div class="worlds" id="worlds"></div>
+    <button class="row" id="btnAlbum"><span>🖼</span><span>그림 도감</span><span class="sp"></span><span id="albumCount" style="opacity:.6">0/0</span><span class="ch">›</span></button>
     <button class="row" id="btnThemes"><span>🎨</span><span id="themeName">보드 테마</span><span class="sp"></span><span class="ch">›</span></button>
     <div class="howto">
       <h3>하는 법</h3>
@@ -183,6 +191,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
       • 숫자 칸을 누르면, 깃발 수가 맞을 때 주변이 한 번에 열려요<br>
       • 8×8 구역의 안전한 칸을 다 열면 구역 완성 🧩<br>
       • 💎 보석과 드문 💖 하트(보석 5개)를 모아 테마를 열어요<br>
+      • 구역을 다 풀면 그 자리에 🖼 픽셀 그림이 나타나요 (그림 도감에 모여요)<br>
       • 구역을 완성할 때마다 🔍 돋보기 1개! 누른 칸 둘레 3×3의 지뢰를 5초간 비춰 봐요<br>
       • 지뢰를 밟으면 실수로 세고, 광고 없이 되돌릴 수 있어요<br>
       • 한 수마다 자동 저장돼요. 언제 꺼도 그 자리에서 이어져요
@@ -219,6 +228,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 
 <script src="engine.js"></script>
+<script src="pictures.js"></script>
 <script src="storage.js"></script>
 <script src="app.js"></script>
 </body>

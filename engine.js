@@ -202,7 +202,7 @@
 
     /** 파기. 이미 열린 숫자 칸이면 깃발 수가 맞을 때 주변을 한꺼번에 연다. */
     reveal(x, y) {
-      const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0 };
+      const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0, firstSolved: [] };
       if (this.gameOver || this.exploded !== null) return out;
       const k = key(x, y);
       if (this.flagged.has(k)) return out;
@@ -235,7 +235,7 @@
     }
 
     toggleFlag(x, y) {
-      const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0 };
+      const out = { changed: false, exploded: false, solved: 0, gems: 0, rewards: 0, firstSolved: [] };
       if (!this.start || this.gameOver || this.exploded !== null) return out;
       const k = key(x, y);
       if (this.revealed.has(k)) return out;
@@ -318,7 +318,7 @@
         if (this.solved.has(sk)) continue;
         if (this.sectorClear(kx(sk), ky(sk))) {
           this.solved.add(sk); move.s.push(sk);
-          if (!this.rewarded.has(sk)) { this.rewarded.add(sk); out.rewards++; }
+          if (!this.rewarded.has(sk)) { this.rewarded.add(sk); out.rewards++; out.firstSolved.push(sk); }
         }
       }
       this.gems += move.g;

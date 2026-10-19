@@ -11,6 +11,8 @@
 
   const { WORLDS, world, key, kx, ky, fdiv, SECTOR, Session, todayStamp } = Mines;
   const PEEK_MS = 5000;
+  const RIPPLE_MS = 55;   // 그림이 가운데서부터 한 칸씩 번져 나가는 간격
+  const picOf = (field, sx, sy) => Pictures.pick(Mines.hash(field.seed, sx, sy, 11));
   const $ = (id) => document.getElementById(id);
   const layer = $('layer');
 
@@ -41,7 +43,7 @@
 
   // ─────────────────────────── 상태 ───────────────────────────
   const DEFAULT_PROFILE = { wallet: 0, lifetimeGems: 0, lifetimeMistakes: 0, theme: 'mint', unlocked: ['mint'],
-    introSeen: false, sound: true, haptic: true, magnifiers: 0 };
+    introSeen: false, sound: true, haptic: true, magnifiers: 0, pictures: {} };
   let profile = { ...DEFAULT_PROFILE };
   const summaries = {};            // 보드 id → 저장본 (홈 화면 통계용)
   let th = THEMES[0];
@@ -120,6 +122,7 @@
     $('tGems').textContent = profile.wallet;
     $('tMistakes').textContent = profile.lifetimeMistakes;
     $('tMag').textContent = profile.magnifiers;
+    $('albumCount').textContent = `${Pictures.list.filter((p) => profile.pictures[p.id] > 0).length}/${Pictures.list.length}`;
     $('tSectors').textContent = Object.values(summaries).reduce((n, s) => n + ((s.solved || []).length), 0);
     const today = todayStamp();
     $('worlds').innerHTML = WORLDS.map((w) => {
@@ -273,6 +276,28 @@
 
   $('btnGift').onclick = showGift;
   $('btnThemes').onclick = showThemes;
+  $('btnAlbum').onclick = showAlbum;
+
+  function picSvg(p, hidden) {
+    let r = '';
+    p.px.forEach((row, y) => [...row].forEach((ch, x) => {
+      const col = hidden ? (ch === '.' ? '#00000010' : '#0000002e') : (ch === '+' ? p.c1 : ch === '#' ? p.c2 : '#FFF5D3');
+      r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col}"/>`;
+    }));
+    return `<svg viewBox="0 0 8 8" shape-rendering="crispEdges" width="100%" height="100%">${r}</svg>`;
+  }
+
+  function showAlbum() {
+    const got = Pictures.list.filter((p) => profile.pictures[p.id] > 0).length;
+    const cells = Pictures.list.map((p) => {
+      const n = profile.pictures[p.id] || 0;
+      return `<div class="pic${n ? '' : ' locked'}"><div class="art">${picSvg(p, !n)}</div>
+        <div class="pn">${n ? p.name : '???'}</div>${n ? `<div class="pc">×${n}</div>` : ''}</div>`;
+    }).join('');
+    sheet(`<h3>🖼 그림 도감 · ${got}/${Pictures.list.length}</h3>
+      <div class="album">${cells}</div>
+      <div class="status">구역을 처음 완성할 때마다 그 자리에 그림이 나타나요. 드문 그림도 숨어 있어요.</div>`);
+  }
   $('btnSettings').onclick = showSettings;
 
   // ─────────────────────────── 게임 ───────────────────────────
@@ -337,10 +362,20 @@
         const last = s.undoStack[s.undoStack.length - 1];
         for (const sk of (last ? last.s : [])) this.celebrate(kx(sk), ky(sk));
         const bits = [];
+        const found = [];
+        for (const sk of (last ? last.s : [])) {
+          const pic = picOf(s.field, kx(sk), ky(sk));
+          const first = out.firstSolved.includes(sk);
+          const isNew = first && !(profile.pictures[pic.id] > 0);
+          if (first) profile.pictures[pic.id] = (profile.pictures[pic.id] || 0) + 1;
+          found.push((isNew ? '✨새 그림 ' : '🖼 ') + pic.name);
+        }
+        if (out.firstSolved.length) saveProfile();
+        if (found.length) bits.push(found.join(' · '));
         if (this.cfg.kind === 'timed') bits.push(`⏱ +${out.solved * this.cfg.bonus}초`);
         if (out.rewards) bits.push(`🔍 돋보기 +${out.rewards}`);
         if (out.gems) bits.push(`💎 +${out.gems}`);
-        banner(out.solved > 1 ? `🎉 구역 ${out.solved}개 클리어!` : '🎉 구역 클리어!', bits.join('   '), s.solved.size);
+        banner(out.solved > 1 ? `🎉 구역 ${out.solved}개 클리어!` : '🎉 구역 클리어!', bits.join('<br>'), s.solved.size);
       } else if (out.gems) {
         sfx('gem'); haptic('medium');
         toast(out.gems >= 5 ? `💖 하트 발견! +${out.gems}` : `💎 +${out.gems}`);
@@ -573,6 +608,24 @@
     ctx.closePath(); ctx.fill();
   }
 
+  /** 완성 직후엔 그림이 가운데서부터 번져 나간다 */
+  function pictureVisible(g, sx, sy, x, y) {
+    if (!g.fx.length) return true;
+    const f = g.fx.find((e) => e.sx === sx && e.sy === sy);
+    if (!f) return true;
+    const d = Math.max(Math.abs(x - sx * SECTOR - 3.5), Math.abs(y - sy * SECTOR - 3.5)) - 0.5;
+    return performance.now() - f.t0 > 120 + d * RIPPLE_MS;
+  }
+
+  function drawMiniFlag(x, y, w, onColor) {
+    ctx.save(); ctx.globalAlpha = 0.85;
+    ctx.fillStyle = onColor ? '#FFFFFF' : th.pole;
+    ctx.fillRect(x, y, Math.max(1, w * 0.12), w);
+    ctx.fillStyle = onColor ? '#FFFFFF' : th.flag;
+    ctx.beginPath(); ctx.moveTo(x + w * 0.12, y); ctx.lineTo(x + w * 0.85, y + w * 0.25); ctx.lineTo(x + w * 0.12, y + w * 0.5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
   function draw() {
     const g = game, s = g.s, f = s.field, c = g.cell;
     const W = innerWidth, H = innerHeight;
@@ -596,6 +649,22 @@
         if (s.exploded === k) {
           ctx.fillStyle = '#F2545B'; rr(px, py, w, w, rad); ctx.fill();
           ctx.font = emoFont; ctx.fillText('💣', px + w / 2, py + w / 2 + c * 0.03);
+        } else if (s.solved.has(key(sx, sy)) && pictureVisible(g, sx, sy, x, y)) {
+          // 완성 구역 = 픽셀 그림 한 칸
+          const pic = picOf(f, sx, sy);
+          const ch = pic.px[y - sy * SECTOR][x - sx * SECTOR];
+          const col = ch === '+' ? pic.c1 : ch === '#' ? pic.c2 : th.solA;
+          ctx.fillStyle = col; ctx.fillRect(g.ox + x * c + 0.5, g.oy + y * c + 0.5, c - 1, c - 1);
+          const mine = !s.revealed.has(k);
+          if (mine) { if (c >= 24) drawMiniFlag(px + w * 0.62, py + w * 0.08, w * 0.3, ch !== '.'); }
+          else if (c >= 24) {
+            const n = f.count(x, y);
+            if (n) {
+              ctx.font = numFont; ctx.globalAlpha = 0.38;
+              ctx.fillStyle = ch === '.' ? th.nums[n - 1] : '#FFFFFF';
+              ctx.fillText(n, px + w / 2, py + w / 2 + c * 0.03); ctx.globalAlpha = 1;
+            }
+          }
         } else if (s.revealed.has(k)) {
           const sol = s.solved.has(key(sx, sy));
           ctx.fillStyle = sol ? (alt ? th.solA : th.solB) : (alt ? th.openA : th.openB);
@@ -670,8 +739,9 @@
 
   function drawFx(g, s, c) {
     if (!g.fx.length) return;
-    const now = performance.now(), DUR = 1600;
+    const now = performance.now(), DUR = 1800;
     g.fx = g.fx.filter((f) => now - f.t0 < DUR && s.solved.has(key(f.sx, f.sy)));
+    if (!g.fx.length) { g.dirty = true; return; }
     const GOLD = th.dark ? '#FFD36E' : '#E3A92B';
     for (const f of g.fx) {
       const t = (now - f.t0) / DUR;
@@ -696,7 +766,7 @@
       }
       // CLEAR 도장
       const pop = t < 0.18 ? 1.6 - (t / 0.18) * 0.6 : 1;
-      ctx.globalAlpha = t < 0.75 ? 1 : Math.max(0, 1 - (t - 0.75) / 0.25);
+      ctx.globalAlpha = t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.2);
       ctx.translate(cx, cy); ctx.rotate(-0.12); ctx.scale(pop, pop);
       const fs = Math.max(16, Math.min(bw * 0.24, 64));
       ctx.font = `900 ${fs}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
@@ -816,10 +886,18 @@
   // ─────────────────────────── 시작 ───────────────────────────
   async function boot() {
     const p = await Storage.load('profile');
-    if (p && typeof p === 'object') profile = { ...DEFAULT_PROFILE, ...p };
+    if (p && typeof p === 'object') profile = { ...DEFAULT_PROFILE, ...p, pictures: { ...(p.pictures || {}) } };
     for (const w of WORLDS) {
       const s = await Storage.load('world:' + w.id);
       if (s) summaries[w.id] = s;
+    }
+    // 그림 도감이 생기기 전에 완성한 구역도 도감에 넣어 준다 (한 번만)
+    if (!profile.albumBackfilled) {
+      for (const sv of Object.values(summaries)) for (const sk of (sv.rewarded || sv.solved || [])) {
+        const pic = picOf({ seed: sv.seed }, kx(sk), ky(sk));
+        profile.pictures[pic.id] = (profile.pictures[pic.id] || 0) + 1;
+      }
+      profile.albumBackfilled = true; saveProfile(true);
     }
     applyTheme();
     renderHome();
