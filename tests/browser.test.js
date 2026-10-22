@@ -45,6 +45,17 @@ const ok = (c, m) => { if (!c) { fail++; console.log('FAIL', m); } else console.
   ok(await page.evaluate(([x, y]) => __app.game.s.isFlagged(x, y), [target.x, target.y]), 'long-press places flag');
   await page.screenshot({ path: shots + '/3-board.png' });
 
+  // 깃발 모드를 켜고 껐다 켜도 그대로인가 (선화 피드백)
+  await page.click('#mode');
+  ok(await page.evaluate(() => __app.game.flagMode), 'flag mode on');
+  await page.waitForTimeout(300);
+  await page.reload(); await page.waitForSelector('.world'); await page.click('.world[data-id="trail"]'); await page.waitForSelector('#game:not([hidden])');
+  ok(await page.evaluate(() => __app.game.flagMode) && (await page.textContent('#modeT1')).includes('깃발'), 'flag mode remembered after reopen');
+  await page.click('#mode');
+  ok(await page.evaluate(() => !__app.game.flagMode && !__app.profile.flagMode), 'back to dig mode');
+  await page.evaluate(() => __app.game.centerOn(...__app.game.s.start, false));
+  await page.waitForTimeout(50);
+
   // 끌어서 이동
   const ox0 = await page.evaluate(() => __app.game.ox);
   await page.mouse.move(200, 400); await page.mouse.down(); await page.mouse.move(150, 380, { steps: 5 }); await page.mouse.up();

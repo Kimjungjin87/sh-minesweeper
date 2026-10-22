@@ -147,7 +147,7 @@
 
   // ─────────────────────────── 상태 ───────────────────────────
   const DEFAULT_PROFILE = { wallet: 0, lifetimeGems: 0, lifetimeMistakes: 0, theme: 'mint', unlocked: ['mint'],
-    introSeen: false, sound: true, soundInSilent: false, haptic: true, magnifiers: 0, pictures: {},
+    introSeen: false, flagMode: false, sound: true, soundInSilent: false, haptic: true, magnifiers: 0, pictures: {},
     pid: '', nickname: '', hcBest: {}, hcPending: null };
   let profile = { ...DEFAULT_PROFILE };
   const summaries = {};            // 보드 id → 저장본 (홈 화면 통계용)
@@ -654,7 +654,7 @@
     $('game').classList.toggle('hc', cfg.kind === 'hardcore');
     if (cfg.kind === 'hardcore' && !profile.pid) { profile.pid = newPid(); saveProfile(true); }
     resize(); game.place();
-    setMode(false);
+    setMode(!!profile.flagMode);   // 마지막에 쓰던 모드 그대로
     updateHud();               // 터진 채로 저장됐으면 여기서 되돌리기 카드가 뜬다
     if (game.s.gameOver) { if (game.s.hardcore) hcResult(game); else showOver(); }
     if (!profile.soundTipShown && profile.sound) {
@@ -893,7 +893,11 @@
   $('btnUndo').onclick = () => game && game.undo();
   $('btnMag').onclick = () => game && game.toggleAim();
   $('btnMenu').onclick = () => game && showMenu();
-  $('mode').onclick = () => { if (game) { setMode(!game.flagMode); haptic('light'); } };
+  $('mode').onclick = () => {
+    if (!game) return;
+    setMode(!game.flagMode); haptic('light');
+    profile.flagMode = game.flagMode; saveProfile(true);
+  };
 
   // ─────────────────────────── 그리기 ───────────────────────────
   let dpr = 1;
