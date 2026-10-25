@@ -14,7 +14,7 @@
 
   const EXACT = {
     // 홈
-    '광고 없이, 끝없이': 'Endless, relaxing minesweeper',
+    '광고 없이, 끝없이': 'Endless, relaxing minesweeper', '끝없이 펼쳐지는 지뢰찾기': 'Minesweeper that never ends',
     '보석': 'Gems', '완성 구역': 'Sectors', '돋보기': 'Lens', '전체 실수': 'Mistakes',
     '하드코어 랭킹': 'Hardcore ranking', '그림 도감': 'Picture album', '보드 테마': 'Board themes',
     '하는 법': 'How to play',
@@ -86,6 +86,21 @@
     '완성도': 'Completion', '걸린 시간': 'Time',
     '✨ 이번 회차 내 최고 기록이에요!': '✨ Your best this round!', '🔁 새로 도전': '🔁 New attempt',
     '더 좋은 기록일 때만 랭킹이 바뀌어요.': 'Only better results replace it.',
+    // 랭킹
+    '랭킹에 쓸 이름 (한글 8자)': 'Your name for the ranking', '🏆 랭킹에 올리기': '🏆 Submit to ranking',
+    '랭킹에는 이 이름과 기록만 저장돼요': 'Only this name and your result are stored',
+    '이름을 적어 주세요': 'Please enter a name', '한글 8자(영문 16자)까지 쓸 수 있어요': 'Up to 16 letters',
+    '올리는 중…': 'Submitting…', '🏆 다시 올려 보기': '🏆 Try again',
+    '랭킹 서버가 아직 연결 전이에요. 기록은 이 기기에 남아 있어요.': 'Ranking server not connected. Your result is kept on this device.',
+    '인터넷이 안 돼요. 연결되면 자동으로 올라가요.': 'You\'re offline. It will be submitted when you reconnect.',
+    '🏆 랭킹 보기': '🏆 View ranking', '랭킹 보기': 'View ranking', '🏆 하드코어 랭킹': '🏆 Hardcore ranking',
+    '끝난 회차': 'Finished round', '불러오는 중…': 'Loading…', '내 최고:': 'My best:', '이번 회차 내 기록 없음': 'No result this round',
+    '없음': 'none', '이름 바꾸기': 'Change name', '인터넷 연결을 확인해 주세요': 'Please check your connection',
+    '순위를 불러오지 못했어요': 'Couldn\'t load the ranking', '아직 아무도 기록이 없어요.': 'No results yet.', '첫 번째가 되어 보세요!': 'Be the first!',
+    '랭킹 서버가 아직 연결 전이에요.': 'Ranking server not connected.', '(설정을 마치면 여기에 순위가 나와요)': '(Rankings appear here once it\'s set up)',
+    '랭킹 이름': 'Ranking name', '한글 8자까지': 'Up to 16 letters', '저장': 'Save',
+    '여기서 끝내고 기록 내기': 'End run & submit',
+    '완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.': 'Higher completion ranks first; ties go to the faster time.',
     // 그림 도감
     '구역을 처음 완성할 때마다 그 자리에 그림이 나타나요. 드문 그림도 숨어 있어요.': 'Each newly completed sector reveals a picture. Some are rare!',
     // 테마
@@ -98,7 +113,9 @@
     '• 구역을 다 풀면 그 자리에 🖼 픽셀 그림이 나타나요 (그림 도감에 모여요)': '• Completed sectors turn into 🖼 pixel pictures (see the album)',
     '• 구역을 완성할 때마다 🔍 돋보기 1개! 누른 칸 둘레 3×3의 지뢰를 5초간 비춰 봐요': '• Each sector gives a 🔍 lens: reveals mines in a 3×3 for 5s',
     '• 지뢰를 밟으면 실수로 세고, 광고 없이 되돌릴 수 있어요': '• Hitting a mine counts as a mistake — you can undo it',
+    '• 지뢰를 밟으면 실수로 세고, 하루 3번은 무료로 되돌릴 수 있어요': '• Hitting a mine counts as a mistake — 3 free undos every day',
     '• 한 수마다 자동 저장돼요. 언제 꺼도 그 자리에서 이어져요': '• Saved after every move — pick up right where you left off',
+    '• 🔥 하드코어: 되돌리기·돋보기 없이 96×96 보드에 도전! 화·목·토 아침 7시(한국 시간)에 새 그림으로 바뀌고 랭킹에 올라가요': '• 🔥 Hardcore: a 96×96 board with no undo or lens. New picture and ranking every Tue/Thu/Sat (7:00 KST)',
     '• 🔥 하드코어: 되돌리기·돋보기 없이 96×96 보드에 도전! 화·목·토 아침 7시에 새 그림으로 바뀌고 랭킹에 올라가요': '• 🔥 Hardcore: a 96×96 board with no undo or lens — a new picture every Tue/Thu/Sat',
   };
 
@@ -144,8 +161,16 @@
     [/^이번 회차 그림은 $/, () => 'This round\'s picture was '],
     [/^ 였어요!$/, () => '!'],
     [/^이번 회차 내 최고: ([\d.]+)% · (.+)\s*더 좋은 기록일 때만 랭킹이 바뀌어요\.$/, (m) => `Your best this round: ${m[1]}% · ${m[2]}`],
+    [/^올리지 못했어요: (.+)$/, (m) => `Couldn't submit: ${m[1]}`],
+    [/^이번 회차 내 기록 없음 · 이름:$/, () => 'No result this round · Name:'],
+    [/^이번 회차 (.+)$/, (m) => `This round ${fixDay(m[1])}`],
+    [/^지난 회차 (.+)$/, (m) => `Last round ${fixDay(m[1])}`],
+    [/^다음 초기화 ([일월화수목금토]) 07:00 \((.+) 남음\)$/, (m) => `Next reset ${day(m[1])} 7:00 (${dur(m[2])} left)`],
+    [/^모두 (\d+)명 도전$/, (m) => `${m[1]} player${m[1] === '1' ? '' : 's'}`],
+    [/^·\s*(.+?)\s*·\s*이름:$/, (m) => `· ${m[1]} · Name:`],
     [/^(.+)\/(.+)\((.)\)$/, (m) => (W.includes(m[3]) ? `${m[1]}/${m[2]} (${day(m[3])})` : null)],
   ];
+  function fixDay(s) { return s.replace(/\(([일월화수목금토])\)/, (x, d) => ` (${day(d)})`); }
   function dur(s) {
     return s.replace(/(\d+)일/g, '$1d').replace(/(\d+)시간/g, '$1h').replace(/(\d+)분/g, '$1m').replace(/ /g, ' ');
   }

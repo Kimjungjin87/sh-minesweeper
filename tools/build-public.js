@@ -7,7 +7,9 @@ const fs = require('fs'), path = require('path'), { execSync } = require('child_
 const root = path.join(__dirname, '..');
 
 // ✏️ 공개판 이름 (정해지면 여기만 바꾸면 된다)
-const NAME = { ko: '지뢰 피크닉', en: 'Mine Picnic' };
+const NAME = { ko: '무한지뢰', en: 'Minefinity' };
+// ✏️ 랭킹 서버 (Cloudflare Worker) 주소 — server-worker/README.md 대로 만든 뒤 넣는다. 비어 있으면 랭킹 화면이 안 보인다.
+const PUBLIC_RANK_URL = '';
 
 const FILES = ['index.html', 'app.js', 'engine.js', 'pictures.js', 'storage.js', 'ranklib.js', 'i18n.js', 'ads.js'];
 const ICONS = ['icon-192.png', 'icon-512.png'];
@@ -19,7 +21,7 @@ function build(outDir, edition, extraHead) {
   for (const f of ICONS) fs.copyFileSync(path.join(root, 'icons', f), path.join(outDir, 'icons', f));
   fs.writeFileSync(path.join(outDir, 'config.js'),
     `/* 공개판 설정 — tools/build-public.js 가 만든 파일 (직접 고치지 마세요) */\n` +
-    `window.RANK_URL = '';\nwindow.EDITION = ${JSON.stringify(edition, null, 2)};\n`);
+    `window.RANK_URL = ${JSON.stringify(PUBLIC_RANK_URL)};\nwindow.EDITION = ${JSON.stringify(edition, null, 2)};\n`);
   let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   html = html
     .replace(/<title>[^<]*<\/title>/, `<title>${NAME.en}</title>`)
@@ -31,7 +33,7 @@ function build(outDir, edition, extraHead) {
   fs.writeFileSync(path.join(outDir, 'index.html'), html);
 }
 
-const base = { id: 'public', name: NAME, storage: 'pub', gift: false, sw: false, ranking: false };
+const base = { id: 'public', name: NAME, storage: 'pub', gift: false, sw: false, ranking: true };
 build(path.join(root, 'dist/crazygames'), { ...base, ads: 'crazygames' },
   '<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>\n');
 build(path.join(root, 'preview'), { ...base, ads: 'mock' }, '');

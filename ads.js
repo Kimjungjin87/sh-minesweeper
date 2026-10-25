@@ -96,7 +96,14 @@
     try { const g = sdk() && sdk().game; if (g) on ? g.loadingStart() : g.loadingStop(); } catch (e) {}
   }
 
+  /** CrazyGames 에 로그인한 이용자의 이름 (없으면 null) */
+  async function username() {
+    if (provider !== 'crazygames' || !ready) return null;
+    try { const u = await sdk().user.getUser(); return (u && u.username) || null; } catch (e) { return null; }
+  }
+
   root.Ads = {
+    username,
     provider, init, canOffer, rewarded, cooldownLeft, gameplay, loading,
     get ready() { return ready; }, get adblock() { return adblock; }, get playing() { return playing; },
     setHooks(h) { hooks = { ...hooks, ...h }; },

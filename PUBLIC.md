@@ -1,4 +1,4 @@
-# 공개판 (보상형 광고)
+# 공개판 — 무한지뢰 / Minefinity (보상형 광고)
 
 선물판(SH지뢰찾기, 이 저장소 루트)은 **광고 없이 그대로** 두고, 같은 소스에서 설정만 바꾼 공개판을 만든다.
 
@@ -7,7 +7,7 @@ node tools/build-public.js
   → dist/crazygames/  ·  dist/crazygames.zip   CrazyGames 업로드용 (진짜 광고 SDK)
   → preview/                                   미리보기 (가짜 광고) — https://kimjungjin87.github.io/sh-minesweeper/preview/
 ```
-이름은 `tools/build-public.js` 맨 위 `NAME` 에서 바꾼다.
+이름(`NAME`)과 랭킹 서버 주소(`PUBLIC_RANK_URL`)는 `tools/build-public.js` 맨 위에서 바꾼다.
 
 ## 선물판과 다른 점
 | | 선물판 | 공개판 |
@@ -16,7 +16,7 @@ node tools/build-public.js
 | 시작 | 홈 화면 | 바로 게임 (처음엔 오솔길, 다음엔 마지막 보드) |
 | 언어 | 한국어 | 기기 언어 따라 한국어/영어, 설정에서 바꿈 |
 | 선물 카드·이니셜 S/H 그림·홈 화면 설치 안내 | 있음 | 없음 |
-| 하드코어 랭킹 | 있음 (구글 시트) | 끔 — 공개 트래픽엔 서버 한도가 부족. 하드코어는 개인 최고 기록만 |
+| 하드코어 랭킹 | 구글 시트 서버 | **Cloudflare Workers + D1** (무료, 공개 트래픽용) — `server-worker/README.md`. 주소를 넣기 전엔 랭킹 화면이 숨겨짐 |
 | 저장 공간 | `im:` | `im-pub:` (서로 안 섞임) |
 
 ## 보상형 광고 자리 (`app.js` 위쪽 숫자로 조절)

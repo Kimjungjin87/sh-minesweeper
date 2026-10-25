@@ -93,7 +93,7 @@ function handleSubmit_(b, now) {
   if (!(time >= 1 && time <= 7 * 86400)) return { ok: false, error: 'bad time' };
   if (['dead', 'clear', 'giveup'].indexOf(end) < 0) return { ok: false, error: 'bad end' };
   if ((pct >= 100) !== (end === 'clear')) return { ok: false, error: 'bad end' };
-  if (time < pct * 0.6) return { ok: false, error: 'too fast' };   // 사람이 낼 수 없는 속도
+  if (time < (pct - 5) * 0.6) return { ok: false, error: 'too fast' };   // 사람이 낼 수 없는 속도
   var name = RankLib.cleanName(b.name);
   var rec = { pid: pid, name: name, pct: pct, time: time, end: end, at: now };
 

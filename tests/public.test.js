@@ -1,13 +1,17 @@
 // 공개판 (preview/) 테스트: 보상형 광고 3자리 + 영어 화면에 한글이 남는지
 // node tests/public.test.js <base-url-of-preview> <shot-dir>
 const { chromium, devices } = require('playwright');
-const [base, shots] = process.argv.slice(2);
+const [base, shots, rankUrl] = process.argv.slice(2);
 let fail = 0;
 const ok = (c, m) => { if (!c) { fail++; console.log('FAIL', m); } else console.log('ok  ', m); };
 
-async function run(lang) {
+async function run(lang, rank) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: lang === 'en' ? 'en-US' : 'ko-KR' });
+  if (rank) await ctx.route('**/preview/config.js', async (route) => {
+    const res = await route.fetch(); const body = (await res.text()).replace(/window\.RANK_URL = [^;]*;/, `window.RANK_URL = ${JSON.stringify(rank)};`);
+    route.fulfill({ response: res, body });
+  });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -113,7 +117,8 @@ async function run(lang) {
     await page.click(id); await page.waitForSelector('.sheet'); await page.waitForTimeout(150); await scan();
     await page.click('.veil', { position: { x: 20, y: 20 } }); await page.waitForTimeout(100);
   }
-  ok(await page.isHidden('#btnRank') && await page.isHidden('#btnGift') && await page.isHidden('#installTip'), `[${lang}] gift-only UI hidden`);
+  ok(await page.isHidden('#btnGift') && await page.isHidden('#installTip'), `[${lang}] gift-only UI hidden`);
+  ok((await page.isHidden('#btnRank')) === !rank, `[${lang}] ranking button ${rank ? 'shown' : 'hidden'} (server ${rank ? 'set' : 'unset'})`);
   await page.evaluate(() => __app.openGame('timed'));
   await page.waitForSelector('#game:not([hidden])');
   await page.touchscreen.tap(vp.width / 2, vp.height / 2);
@@ -138,11 +143,25 @@ async function run(lang) {
   await page.touchscreen.tap(vp.width / 2, vp.height / 2); await page.waitForTimeout(200);
   await scan();
   await page.click('#btnMenu'); await page.waitForSelector('.sheet'); await scan();
-  ok(!(await page.$('[data-a="rank"]')), `[${lang}] no ranking in public hardcore`);
+  ok(!!(await page.$('[data-a="rank"]')) === !!rank, `[${lang}] hardcore ranking menu only with server`);
   await page.click('[data-a="giveup"]'); await page.click('#gGo');
   await page.waitForSelector('.hcres'); await page.waitForTimeout(100); await scan();
-  ok(!(await page.$('#hSend')) && !(await page.$('#oAd')), `[${lang}] hardcore result: no submit, no ads`);
-  await page.screenshot({ path: `${shots}/pub-${lang}-4-hc.png` });
+  ok(!(await page.$('#oAd')), `[${lang}] hardcore result: no ads`);
+  if (!rank) ok(!(await page.$('#hSend')), `[${lang}] no submit without server`);
+  else {
+    ok(!!(await page.$('#hSend')), `[${lang}] submit with server`);
+    await page.screenshot({ path: `${shots}/pub-${lang}-4-hc.png` });
+    await page.fill('#nick', 'Sunny fuck'); await page.click('#hSend');
+    await page.waitForSelector('.rkr', { timeout: 8000 }); await page.waitForTimeout(150); await scan();
+    const rows = await page.$$eval('.rkr', (els) => els.map((e) => e.textContent));
+    ok(rows.some((r) => r.includes('Sunny ****')), `[${lang}] ranked with masked name: ${rows[0]}`);
+    await page.screenshot({ path: `${shots}/pub-${lang}-6-rank.png` });
+    await page.click('#rkName'); await page.waitForSelector('#nick2'); await scan();
+    await page.fill('#nick2', 'Sunny'); await page.click('#rnGo');
+    await page.waitForFunction(() => [...document.querySelectorAll('.rkr')].some((e) => e.textContent.includes('Sunny') && !e.textContent.includes('*')), null, { timeout: 8000 });
+    await scan();
+    await page.click('.tab:not(.on)'); await page.waitForSelector('.rkmsg'); await page.waitForTimeout(400); await scan();
+  }
 
   // 저장 공간이 선물판과 분리돼 있는가
   const ns = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('im:')).length);
@@ -158,8 +177,8 @@ async function run(lang) {
 }
 
 (async () => {
-  await run('en');
-  await run('ko');
+  await run('en', rankUrl);
+  await run('ko', null);
   console.log(fail ? `${fail} FAILURES` : 'ALL PASS');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

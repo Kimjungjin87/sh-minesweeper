@@ -68,6 +68,7 @@
 
   // ─────────────────────────── 랭킹 서버 ───────────────────────────
   const rankOn = () => !!(window.RANK_URL && /^https?:\/\//.test(window.RANK_URL));
+  const rankingOn = () => ED.ranking && rankOn();
   async function rankFetch(opts) {
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 12000);
     try {
@@ -866,9 +867,9 @@
       <button class="item" data-a="fit"><span class="ic">🗺️</span>보드 전체 보기</button>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
-      ${ED.ranking ? '<button class="item" data-a="rank"><span class="ic">🏆</span>랭킹 보기</button>' : ''}
-      ${s.started && !s.gameOver ? `<button class="item danger" data-a="giveup"><span class="ic">🏳️</span>${ED.ranking ? '여기서 끝내고 기록 내기' : '여기서 끝내기'}</button>` : ''}
-      <div class="status">되돌리기·돋보기 없음 · 지뢰를 밟으면 그 자리에서 끝나요.<br>${ED.ranking ? '완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.<br>' : ''}다음 초기화: ${nextResetText()}</div>`);
+      ${rankingOn() ? '<button class="item" data-a="rank"><span class="ic">🏆</span>랭킹 보기</button>' : ''}
+      ${s.started && !s.gameOver ? `<button class="item danger" data-a="giveup"><span class="ic">🏳️</span>${rankingOn() ? '여기서 끝내고 기록 내기' : '여기서 끝내기'}</button>` : ''}
+      <div class="status">되돌리기·돋보기 없음 · 지뢰를 밟으면 그 자리에서 끝나요.<br>${rankingOn() ? '완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.<br>' : ''}다음 초기화: ${nextResetText()}</div>`);
     sh.addEventListener('click', (e) => {
       const b = e.target.closest('.item'); if (!b) return;
       const a = b.dataset.a;
@@ -913,14 +914,15 @@
     const art = hcArt(per);
     const head = end === 'clear' ? ['🏆', '완성!'] : end === 'giveup' ? ['🏳️', '도전 종료'] : ['💥', '지뢰를 밟았어요'];
     const needName = !profile.nickname;
-    const canSend = ED.ranking && best && !best.submitted;
+    const canSend = rankingOn() && best && !best.submitted;
     const v = veil(`<div class="card hcres">
       <div class="big">${head[0]}</div><h2>${head[1]}</h2>
       <div class="hcstat"><div><b>${s.completion}%</b><span>완성도</span></div><div><b>${fmtHMS(s.playSeconds)}</b><span>걸린 시간</span></div></div>
       ${end === 'clear' ? `<p>이번 회차 그림은 <b>${art.emoji} ${tr(art.name)}</b> 였어요!</p>` : ''}
       <p class="small">${isNewBest ? '✨ 이번 회차 내 최고 기록이에요!' : best ? `이번 회차 내 최고: ${best.pct}% · ${fmtHMS(best.time)}\n더 좋은 기록일 때만 랭킹이 바뀌어요.` : ''}</p>
       ${canSend ? `<div class="namebox"><input id="nick" placeholder="랭킹에 쓸 이름 (한글 8자)" value="${esc(profile.nickname)}" autocomplete="off" enterkeyhint="done"><span id="nickW"></span></div>
-      <button class="primary" id="hSend">🏆 랭킹에 올리기</button>` : `${ED.ranking ? '<button class="primary" id="hRank">🏆 랭킹 보기</button>' : ''}`}
+      ${PUBLIC ? '<div class="small" style="margin-top:-4px">랭킹에는 이 이름과 기록만 저장돼요</div>' : ''}
+      <button class="primary" id="hSend">🏆 랭킹에 올리기</button>` : `${rankingOn() ? '<button class="primary" id="hRank">🏆 랭킹 보기</button>' : ''}`}
       <div id="hMsg" class="small"></div>
       <div class="row2"><button class="secondary" id="hAgain">🔁 새로 도전</button><button class="secondary" id="hOut">나가기</button></div>
     </div>`);
@@ -928,10 +930,11 @@
     if (nick) {
       const upd = () => {
         const w = RankLib.width(nick.value.trim());
-        v.querySelector('#nickW').textContent = `${Math.ceil(w / 2)}/8`;
+        v.querySelector('#nickW').textContent = (window.I18N && I18N.lang === 'en' ? `${w}/16` : `${Math.ceil(w / 2)}/8`);
         v.querySelector('#nickW').classList.toggle('over', w > RankLib.NAME_MAX_WIDTH);
       };
       nick.addEventListener('input', upd); upd();
+      if (needName && window.Ads && Ads.username) Ads.username().then((u) => { if (u && !nick.value) { nick.value = RankLib.cleanName(u); upd(); } });
       if (needName) setTimeout(() => nick.focus(), 300);
     }
     const send = v.querySelector('#hSend');
@@ -987,7 +990,7 @@
       <div id="rnMsg" class="small"></div>
       <button class="primary" id="rnGo">저장</button><button class="secondary" id="rnNo">취소</button></div>`, closeLayer);
     const inp = v.querySelector('#nick2');
-    const upd = () => { const w = RankLib.width(inp.value.trim()); v.querySelector('#nickW2').textContent = `${Math.ceil(w / 2)}/8`; v.querySelector('#nickW2').classList.toggle('over', w > RankLib.NAME_MAX_WIDTH); };
+    const upd = () => { const w = RankLib.width(inp.value.trim()); v.querySelector('#nickW2').textContent = (window.I18N && I18N.lang === 'en' ? `${w}/16` : `${Math.ceil(w / 2)}/8`); v.querySelector('#nickW2').classList.toggle('over', w > RankLib.NAME_MAX_WIDTH); };
     inp.addEventListener('input', upd); upd(); setTimeout(() => inp.focus(), 200);
     v.querySelector('#rnNo').onclick = () => showRanking(period);
     v.querySelector('#rnGo').onclick = async () => {
@@ -1371,8 +1374,12 @@
     if (PUBLIC) {
       const nm = typeof ED.name === 'object' ? (ED.name[window.I18N ? I18N.lang : 'ko'] || ED.name.en) : ED.name;
       document.title = nm; $('appName').textContent = nm;
+      $('appSub').textContent = '끝없이 펼쳐지는 지뢰찾기';
+      $('howto').innerHTML = $('howto').innerHTML
+        .replace('• 지뢰를 밟으면 실수로 세고, 광고 없이 되돌릴 수 있어요', `• 지뢰를 밟으면 실수로 세고, 하루 ${FREE_UNDO}번은 무료로 되돌릴 수 있어요`)
+        .replace(/• 🔥 하드코어:[^<]*/, '• 🔥 하드코어: 되돌리기·돋보기 없이 96×96 보드에 도전! 화·목·토 아침 7시(한국 시간)에 새 그림으로 바뀌고 랭킹에 올라가요');
       $('btnGift').hidden = true;
-      if (!ED.ranking) $('btnRank').hidden = true;
+      if (!rankingOn()) $('btnRank').hidden = true;
     }
     if (!profile.introSeen && ED.gift) showGift();
     if (ED.sw !== false && 'serviceWorker' in navigator && location.protocol !== 'file:') {
