@@ -8,9 +8,11 @@
  */
 (function (root) {
   'use strict';
-  const DB_NAME = 'infinite-mines';
+  // 에디션마다 저장 공간을 나눈다 (선물판과 공개판이 같은 주소에 있어도 섞이지 않게)
+  const NS = (root.EDITION && root.EDITION.storage) || '';
+  const DB_NAME = 'infinite-mines' + (NS ? '-' + NS : '');
   const STORE = 'kv';
-  const LS_PREFIX = 'im:';
+  const LS_PREFIX = 'im' + (NS ? '-' + NS : '') + ':';
   let dbPromise = null;
 
   function openDB() {

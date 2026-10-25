@@ -60,6 +60,9 @@ GitHub Pages 로 올라가 있다: **https://kimjungjin87.github.io/sh-minesweep
 고친 파일을 `main` 에 올리면 그걸로 끝이다. 버전 번호를 따로 올릴 필요는 없다.
 테스트: `node tests/engine.test.js` (규칙) · `node tests/browser.test.js http://localhost:8765/ <스크린샷폴더>` (브라우저, playwright 필요)
 
+## 공개판
+광고(보상형만)를 넣은 공개판은 `PUBLIC.md` 참고. 선물판은 광고 없이 그대로다.
+
 ## 파일
 
 ```

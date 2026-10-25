@@ -143,6 +143,7 @@
       this.start = null;
       this.period = c.kind === 'hardcore' ? periodId() : null;
       this.result = null;     // 하드코어: { end: 'dead' | 'clear' | 'giveup' }
+      this.continued = false; // 타임 어택: 이번 판에 이어하기를 이미 썼는가
       this.revealed = new Set();
       this.flagged = new Set();
       this.solved = new Set();
@@ -163,6 +164,7 @@
       this.field = new Field(s.seed, this.cfg.density, s.start, this.cfg.size);
       this.period = s.period ?? null;
       this.result = s.result ?? null;
+      this.continued = !!s.continued;
       this.start = s.start || null;
       this.solved = new Set(s.solved || []);
       this.rewarded = new Set(s.rewarded || s.solved || []);
@@ -222,7 +224,7 @@
         undo,
         timeLeft: this.timeLeft, best: this.best, playSeconds: this.playSeconds,
         gameOver: this.gameOver, day: this.day, camera: this.camera,
-        period: this.period, result: this.result,
+        period: this.period, result: this.result, continued: this.continued,
       };
     }
 
@@ -352,6 +354,13 @@
         return true;
       }
       return false;
+    }
+
+    /** 타임 어택: 시간이 끝난 판을 secs 초 더 이어 간다 (보상형 광고 보상) */
+    extendTime(secs) {
+      if (this.cfg.kind !== 'timed' || !this.gameOver || this.continued) return false;
+      this.gameOver = false; this.timeLeft = secs; this.continued = true;
+      return true;
     }
 
     restart() {

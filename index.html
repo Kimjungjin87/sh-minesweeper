@@ -191,6 +191,10 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .rkme{font-size:13px;color:var(--sub);text-align:center;padding:12px 0 2px;line-height:1.7}
 .rkme b{color:var(--text)}
 .link{color:var(--accent);font-weight:800;text-decoration:underline;font-size:13px;margin-left:4px}
+.opt{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:52px;margin-top:8px;font-size:16px}
+.opt small{font-size:12px;font-weight:700;opacity:.85}
+.opt.alt{}  /* 광고를 안 보는 선택지도 같은 크기·색 (CrazyGames 가이드) */
+.opt:disabled{opacity:.45}
 .status{font-size:12.5px;color:var(--sub);line-height:1.6;padding:10px 4px 0}
 </style>
 </head>
@@ -200,7 +204,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 <section id="home">
   <div class="home-in">
     <div class="head">
-      <div><h1>SH지뢰찾기</h1><p>광고 없이, 끝없이</p></div>
+      <div><h1 id="appName">SH지뢰찾기</h1><p>광고 없이, 끝없이</p></div>
       <div class="sp"></div>
       <button class="round" id="btnGift" aria-label="선물 메시지">💌</button>
       <button class="round" id="btnSettings" aria-label="설정">⚙️</button>
@@ -265,6 +269,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 
 <script src="config.js"></script>
+<script src="i18n.js"></script>
+<script src="ads.js"></script>
 <script src="engine.js"></script>
 <script src="ranklib.js"></script>
 <script src="pictures.js"></script>

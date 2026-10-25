@@ -159,7 +159,7 @@
       '++++++++',
       '.++.#++.',
       '....#...'] },
-    { id: 'S', name: '이니셜 S', c1: '#EC4D6A', c2: '#EC4D6A', weight: 1, px: [
+    { id: 'S', name: '이니셜 S', c1: '#EC4D6A', c2: '#EC4D6A', weight: 1, giftOnly: true, px: [
       '.++++++.',
       '++....++',
       '++......',
@@ -168,7 +168,7 @@
       '++....++',
       '.++++++.',
       '........'] },
-    { id: 'H', name: '이니셜 H', c1: '#EC4D6A', c2: '#EC4D6A', weight: 1, px: [
+    { id: 'H', name: '이니셜 H', c1: '#EC4D6A', c2: '#EC4D6A', weight: 1, giftOnly: true, px: [
       '++....++',
       '++....++',
       '++....++',
@@ -179,6 +179,9 @@
       '++....++'] },
   ];
 
+  // 공개판에서는 선물판 전용 그림(이니셜 S·H)을 뺀다
+  const gift = !(root.EDITION && root.EDITION.id && root.EDITION.id !== 'gift');
+  if (!gift) for (let i = P.length - 1; i >= 0; i--) if (P[i].giftOnly) P.splice(i, 1);
   const total = P.reduce((n, p) => n + p.weight, 0);
 
   /** 구역의 해시값(32비트)으로 그림을 고른다 */

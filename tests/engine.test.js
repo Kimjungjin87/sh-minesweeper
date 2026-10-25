@@ -134,6 +134,8 @@ const t = new M.Session(M.world('timed'), null);
 ok(t.timeLeft === 180, 'timed 180'); t.tick(5); ok(t.timeLeft === 180, 'clock waits');
 t.reveal(0, 0); t.tick(10); ok(Math.abs(t.timeLeft - (170 + t.solved.size * 20)) < 1e-9, 'clock runs');
 ok(t.tick(1e6) && t.gameOver && !t.canUndo, 'time over');
+ok(t.extendTime(30) && !t.gameOver && t.timeLeft === 30 && t.continued, 'extendTime +30s');
+t.tick(1e6); ok(t.gameOver && t.extendTime(30) === false, 'extendTime only once per run');
 const best = t.best; t.restart(); ok(!t.gameOver && t.timeLeft === 180 && !t.started && t.best === best, 'restart keeps best');
 
 // 오늘의 보드

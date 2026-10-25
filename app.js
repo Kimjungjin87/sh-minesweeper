@@ -9,6 +9,16 @@
     from: '— 오빠가~',
   };
 
+  // 에디션: 'gift'(선화 선물판, 기본) / 'public'(공개판: 보상형 광고·영어·바로 시작)
+  const ED = Object.assign({ id: 'gift', name: GIFT.title, ads: 'none', gift: true, sw: true, ranking: true }, window.EDITION || {});
+  const PUBLIC = ED.id !== 'gift';
+  const ADS = PUBLIC && ED.ads !== 'none';
+  const FREE_UNDO = 3;        // 공개판: 지뢰 되돌리기 하루 무료 횟수
+  const UNDO_GEMS = 10;       // 공개판: 보석으로 되돌리기
+  const MAG_GEMS = 20;        // 공개판: 보석으로 돋보기 사기
+  const TIME_BONUS = 30;      // 공개판: 타임 어택 이어하기 초
+  const tr = (t) => (window.I18N ? window.I18N.t(t) : t);
+
   const { WORLDS, world, key, kx, ky, fdiv, SECTOR, Session, todayStamp } = Mines;
   const PEEK_MS = 5000;
   const RIPPLE_MS = 55;   // 그림이 가운데서부터 한 칸씩 번져 나가는 간격
@@ -148,7 +158,7 @@
   // ─────────────────────────── 상태 ───────────────────────────
   const DEFAULT_PROFILE = { wallet: 0, lifetimeGems: 0, lifetimeMistakes: 0, theme: 'mint', unlocked: ['mint'],
     introSeen: false, flagMode: false, sound: true, soundInSilent: false, haptic: true, magnifiers: 0, pictures: {},
-    pid: '', nickname: '', hcBest: {}, hcPending: null };
+    pid: '', nickname: '', hcBest: {}, hcPending: null, freeUndo: { day: 0, used: 0 }, lastWorld: '', lang: '' };
   let profile = { ...DEFAULT_PROFILE };
   const summaries = {};            // 보드 id → 저장본 (홈 화면 통계용)
   let th = THEMES[0];
@@ -160,7 +170,7 @@
     r.setProperty('--accent', th.accent); r.setProperty('--flag', th.flag);
     document.querySelector('meta[name=theme-color]').setAttribute('content', th.bg);
     document.documentElement.style.colorScheme = th.dark ? 'dark' : 'light';
-    $('themeName').textContent = '보드 테마 · 지금: ' + th.name;
+    $('themeName').textContent = '보드 테마 · 지금: ' + tr(th.name);
     if (game) game.dirty = true;
   }
 
@@ -244,6 +254,30 @@
     } catch (e) {}
   }
 
+  // ─────────────────────────── 보상형 광고 ───────────────────────────
+  let adPaused = false;
+  if (window.Ads) Ads.setHooks({
+    pause() { adPaused = true; if (master) master.gain.value = 0; },
+    resume() { adPaused = false; if (master) master.gain.value = 1.6; lastTick = performance.now(); },
+  });
+  /** 광고를 보고 보상을 받는다. 보상을 받았으면 true */
+  async function watchAd(slot) {
+    const r = await Ads.rewarded(slot);
+    if (r === 'ok') { sfx('gem'); haptic('medium'); return true; }
+    toast(r === 'adblock' ? '광고 차단이 켜져 있어 광고를 볼 수 없어요'
+      : r === 'cooldown' ? '잠시 후에 다시 볼 수 있어요' : '지금은 볼 수 있는 광고가 없어요. 잠시 후 다시 해 보세요');
+    return false;
+  }
+  function adWaitText(slot) {
+    const ms = Ads.cooldownLeft(slot);
+    return ms > 60e3 ? `📺 광고는 ${Math.ceil(ms / 60e3)}분 뒤에 다시 볼 수 있어요` : ms > 0 ? `📺 광고는 ${Math.ceil(ms / 1e3)}초 뒤에 다시 볼 수 있어요` : '';
+  }
+  function freeUndoLeft() {
+    const d = todayStamp();
+    if (profile.freeUndo.day !== d) profile.freeUndo = { day: d, used: 0 };
+    return Math.max(0, FREE_UNDO - profile.freeUndo.used);
+  }
+
   // ─────────────────────────── 홈 ───────────────────────────
   function fmtTime(t) { t = Math.max(0, Math.ceil(t)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
 
@@ -264,8 +298,8 @@
         const now = live ? (s.gameOver ? (s.result && s.result.end === 'clear' ? '🏆 완성!' : '도전 끝') : '진행 중') : '';
         return `<button class="world hc" data-id="${w.id}">
           <div class="em">${w.emoji}</div>
-          <div class="bd"><div class="nm">${w.name}<span class="chip hcchip">HARDCORE</span></div>
-          <div class="sb">${w.sub}</div>
+          <div class="bd"><div class="nm">${tr(w.name)}<span class="chip hcchip">HARDCORE</span></div>
+          <div class="sb">${tr(w.sub)}</div>
           <div class="st"><span>🔄 ${nextResetText()}</span></div>
           <div class="st">${b ? `<span>🏆 내 최고 ${b.pct}% · ${fmtHMS(b.time)}</span>` : '<span class="new">이번 회차 기록 없음</span>'}${now ? `<span style="opacity:.7">${now}</span>` : ''}</div></div>
           <div class="go">▶</div></button>`;
@@ -277,8 +311,8 @@
       }
       return `<button class="world" data-id="${w.id}">
         <div class="em">${w.emoji}</div>
-        <div class="bd"><div class="nm">${w.name}<span class="chip">지뢰 ${Math.round(w.density * 100)}%</span></div>
-        <div class="sb">${w.sub}</div>${st}</div>
+        <div class="bd"><div class="nm">${tr(w.name)}<span class="chip">지뢰 ${Math.round(w.density * 100)}%</span></div>
+        <div class="sb">${tr(w.sub)}</div>${st}</div>
         <div class="go">▶</div></button>`;
     }).join('');
   }
@@ -290,13 +324,21 @@
 
   // ─────────────────────────── 시트 · 카드 ───────────────────────────
   function closeLayer() { layer.innerHTML = ''; }
+  // 칸을 누른 손가락 아래에 카드가 뜨면, 폰이 뒤따라 보내는 '클릭'이 카드 버튼을 눌러 버린다 → 뜬 직후 잠깐은 무시
+  let layerShownAt = 0, layerTouched = false;
+  layer.addEventListener('pointerdown', () => { layerTouched = true; }, true);
+  layer.addEventListener('click', (e) => {
+    if (!layerTouched && performance.now() - layerShownAt < 600) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
   function veil(html, onTapOutside) {
+    layerShownAt = performance.now(); layerTouched = false;
     layer.innerHTML = `<div class="veil">${html}</div>`;
     const v = layer.firstElementChild;
     if (onTapOutside) v.addEventListener('click', (e) => { if (e.target === v) onTapOutside(); });
     return v;
   }
   function sheet(html) {
+    layerShownAt = performance.now(); layerTouched = false;
     layer.innerHTML = `<div class="veil" style="place-items:end;padding:0"></div><div class="sheet"><div class="grab"></div>${html}</div>`;
     layer.querySelector('.veil').addEventListener('click', closeLayer);
     return layer.querySelector('.sheet');
@@ -322,7 +364,7 @@
         return `<i style="background:${bg}">${tx}</i>`;
       }).join('');
       return `<button class="theme" data-id="${t.id}"><div class="pv" style="background:${t.bg}">${pv}</div>
-        <div><div class="nm">${t.name}</div><div class="pr">${sel ? '사용 중' : owned ? '보유 중 · 눌러서 쓰기' : '💎 ' + t.price}</div></div>
+        <div><div class="nm">${tr(t.name)}</div><div class="pr">${sel ? '사용 중' : owned ? '보유 중 · 눌러서 쓰기' : '💎 ' + t.price}</div></div>
         <div class="sp"></div><div style="font-size:20px">${sel ? '✅' : owned ? '' : '🔒'}</div></button>`;
     }).join('');
     const s = sheet(`<h3>보드 테마 · 💎 ${profile.wallet}개 보유</h3>${html}`);
@@ -345,18 +387,19 @@
   async function showSettings() {
     const persisted = await Storage.isPersisted();
     const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-    const last = Storage.lastSavedAt ? new Date(Storage.lastSavedAt).toLocaleTimeString('ko-KR') : '아직 없음';
+    const last = Storage.lastSavedAt ? new Date(Storage.lastSavedAt).toLocaleTimeString(window.I18N && I18N.lang === 'en' ? 'en-US' : 'ko-KR') : '아직 없음';
     const s = sheet(`<h3>설정</h3>
       <button class="item" data-a="sound"><span class="ic">🔊</span>소리<span class="sp"></span><span class="switch ${profile.sound ? 'on' : ''}"></span></button>
       <button class="item" data-a="soundInSilent"><span class="ic">🔕</span><span>무음 모드에서도 소리<div class="note">켜면 아이폰 무음 스위치와 상관없이 소리가 나요 (보던 영상 소리는 잠시 멈출 수 있어요)</div></span><span class="sp"></span><span class="switch ${profile.soundInSilent ? 'on' : ''}"></span></button>
       <button class="item" data-a="haptic"><span class="ic">📳</span>진동<span class="sp"></span><span class="switch ${profile.haptic ? 'on' : ''}"></span></button>
       <button class="item" data-a="export"><span class="ic">💾</span><span>백업 파일 내보내기<div class="note">앱을 지우거나 폰을 바꿀 때 이 파일로 이어 할 수 있어요</div></span></button>
       <button class="item" data-a="import"><span class="ic">📂</span><span>백업 파일 불러오기<div class="note">지금 기록을 백업 내용으로 바꿔요</div></span></button>
-      <button class="item" data-a="gift"><span class="ic">💌</span>처음 메시지 다시 보기</button>
+      ${ED.gift ? '<button class="item" data-a="gift"><span class="ic">💌</span>처음 메시지 다시 보기</button>' : ''}
+      ${PUBLIC ? `<button class="item" data-a="lang"><span class="ic">🌐</span>Language<span class="sp"></span><span class="note">${window.I18N && I18N.lang === 'en' ? 'English' : '한국어'}</span></button>` : ''}
       <div class="status">
         저장 방식: 한 수마다 자동 저장 (기기 안 두 군데에 같이 보관)<br>
         마지막 저장: ${last}${Storage.lastError ? ' · <span class="danger">' + Storage.lastError + '</span>' : ''}<br>
-        보관 상태: ${persisted ? '✅ 브라우저가 지우지 않도록 고정됨' : standalone ? '홈 화면 앱으로 실행 중' : '⚠️ 홈 화면에 추가하면 더 안전해요'}
+        ${PUBLIC ? '' : `보관 상태: ${persisted ? '✅ 브라우저가 지우지 않도록 고정됨' : standalone ? '홈 화면 앱으로 실행 중' : '⚠️ 홈 화면에 추가하면 더 안전해요'}`}
       </div>`);
     s.addEventListener('click', async (e) => {
       const b = e.target.closest('.item'); if (!b) return;
@@ -370,6 +413,7 @@
       } else if (a === 'export') exportBackup();
       else if (a === 'import') $('fileIn').click();
       else if (a === 'gift') showGift();
+      else if (a === 'lang' && window.I18N) { profile.lang = I18N.lang === 'en' ? 'ko' : 'en'; await saveProfile(true); I18N.set(profile.lang); renderHome(); applyTheme(); if (game) { updateHud(); setMode(game.flagMode); $('gTitle').textContent = `${game.cfg.emoji} ${tr(game.cfg.name)}`; } showSettings(); }
     });
   }
 
@@ -402,7 +446,7 @@
     const err = Storage.validateBackup(data);
     if (err) return alertCard('😢', '불러오지 못했어요', err);
     const n = Object.keys(data.worlds || {}).length;
-    const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString('ko-KR') : '';
+    const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en-US' : 'ko-KR') : '';
     const v = veil(`<div class="card"><div class="big">📂</div><h2>백업을 불러올까요?</h2>
       <p>${when} 에 만든 백업 · 보드 ${n}개\n지금 기기의 기록은 이 백업으로 바뀌어요.</p>
       <button class="primary" id="impGo">불러오기</button><button class="secondary" id="impNo">취소</button></div>`, closeLayer);
@@ -436,7 +480,7 @@
     const cells = Pictures.list.map((p) => {
       const n = profile.pictures[p.id] || 0;
       return `<div class="pic${n ? '' : ' locked'}"><div class="art">${picSvg(p, !n)}</div>
-        <div class="pn">${n ? p.name : '???'}</div>${n ? `<div class="pc">×${n}</div>` : ''}</div>`;
+        <div class="pn">${n ? tr(p.name) : '???'}</div>${n ? `<div class="pc">×${n}</div>` : ''}</div>`;
     }).join('');
     sheet(`<h3>🖼 그림 도감 · ${got}/${Pictures.list.length}</h3>
       <div class="album">${cells}</div>
@@ -530,7 +574,7 @@
           const first = out.firstSolved.includes(sk);
           const isNew = first && !(profile.pictures[pic.id] > 0);
           if (first) profile.pictures[pic.id] = (profile.pictures[pic.id] || 0) + 1;
-          found.push((isNew ? '✨새 그림 ' : '🖼 ') + pic.name);
+          found.push((isNew ? '✨새 그림 ' : '🖼 ') + tr(pic.name));
         }
         if (out.firstSolved.length) saveProfile();
         if (found.length) bits.push(found.join(' · '));
@@ -549,7 +593,14 @@
       }
       this.changed();
     }
-    undo() {
+    /** 공개판: 지뢰를 밟은 수를 되돌리려면 무료 횟수·광고·보석 중 하나가 필요하다 */
+    undoIsPaid() {
+      if (!ADS) return false;
+      const m = this.s.undoStack[this.s.undoStack.length - 1];
+      return !!(m && m.e !== null && m.e !== undefined);
+    }
+    undo(paid) {
+      if (!paid && this.undoIsPaid()) { showBoom(); return; }
       const before = this.s.gems;
       if (!this.s.undo()) return;
       const dg = this.s.gems - before; if (dg) addGems(dg);
@@ -574,7 +625,10 @@
       if (this.aiming) { this.aiming = false; updateHud(); return; }
       if (!s.started) { toast('먼저 첫 칸을 열어 주세요'); return; }
       if (s.exploded !== null || s.gameOver) return;
-      if (profile.magnifiers <= 0) { toast('🧩 구역을 완성하면 🔍 돋보기를 얻어요'); haptic('medium'); return; }
+      if (profile.magnifiers <= 0) {
+        if (ADS) return showMagOffer();
+        toast('🧩 구역을 완성하면 🔍 돋보기를 얻어요'); haptic('medium'); return;
+      }
       this.aiming = true; haptic('light'); updateHud();
     }
     usePeek(x, y) {
@@ -650,22 +704,25 @@
     const save = await Storage.load('world:' + id);
     game = new Game(cfg, save);
     $('home').hidden = true; $('game').hidden = false;
-    $('gTitle').textContent = `${cfg.emoji} ${cfg.name}`;
+    $('gTitle').textContent = `${cfg.emoji} ${tr(cfg.name)}`;
     $('game').classList.toggle('hc', cfg.kind === 'hardcore');
     if (cfg.kind === 'hardcore' && !profile.pid) { profile.pid = newPid(); saveProfile(true); }
     resize(); game.place();
     setMode(!!profile.flagMode);   // 마지막에 쓰던 모드 그대로
     updateHud();               // 터진 채로 저장됐으면 여기서 되돌리기 카드가 뜬다
     if (game.s.gameOver) { if (game.s.hardcore) hcResult(game); else showOver(); }
-    if (!profile.soundTipShown && profile.sound) {
+    if (!profile.soundTipShown && profile.sound && !PUBLIC) {
       profile.soundTipShown = true; saveProfile();
       setTimeout(() => toast('🔊 소리가 안 나면 메뉴 → 설정에서 켜 주세요'), 600);
     }
     Storage.requestPersist();
+    if (profile.lastWorld !== id) { profile.lastWorld = id; saveProfile(); }
+    if (window.Ads) Ads.gameplay(true);
   }
 
   async function closeGame() {
     if (!game) return;
+    if (window.Ads) Ads.gameplay(false);
     await game.saveNow();
     game = null;
     closeLayer();
@@ -704,17 +761,73 @@
   }
 
   function showBoom() {
+    if (ADS) return showBoomPublic();
     const s = game.s;
     const v = veil(`<div class="card" id="boomCard"><div class="big">💥</div><h2>앗, 지뢰를 밟았어요</h2>
       <p>이 보드의 ${s.mistakes}번째 실수예요.\n괜찮아요 — 광고 없이 바로 되돌릴 수 있어요.</p>
       <button class="primary" id="bUndo">↶ 되돌리기</button>
       <button class="secondary" id="bFlag">🚩 깃발 꽂고 그대로 계속</button></div>`);
-    v.querySelector('#bUndo').onclick = () => { closeLayer(); game.undo(); };
+    v.querySelector('#bUndo').onclick = () => { closeLayer(); game.undo(true); };
     v.querySelector('#bFlag').onclick = () => { closeLayer(); game.flagExplosion(); };
+  }
+
+  function showBoomPublic() {
+    const s = game.s, g = game;
+    const free = freeUndoLeft();
+    const canAd = Ads.canOffer('undo'), canGem = profile.wallet >= UNDO_GEMS;
+    const exploded = s.exploded !== null;
+    const opts = free > 0
+      ? `<button class="opt primary" id="bFree">↶ 되돌리기 <small>(오늘 무료 ${free}번 남음)</small></button>`
+      : `${canAd ? '<button class="opt primary" id="bAd">📺 광고 보고 되돌리기</button>' : ''}
+         <button class="opt primary" id="bGem" ${canGem ? '' : 'disabled'}>💎 ${UNDO_GEMS}개로 되돌리기${canGem ? '' : ` <small>(보석 ${profile.wallet}개)</small>`}</button>`;
+    const v = veil(`<div class="card" id="${exploded ? 'boomCard' : 'undoCard'}"><div class="big">💥</div><h2>${exploded ? '앗, 지뢰를 밟았어요' : '지뢰를 밟기 전으로 돌아갈까요?'}</h2>
+      <p>${exploded ? `이 보드의 ${s.mistakes}번째 실수예요.` : ''}</p>
+      ${opts}
+      ${exploded ? '<button class="opt primary alt" id="bFlag">🚩 깃발 꽂고 그대로 계속</button>' : '<button class="opt primary alt" id="bNo">취소</button>'}
+      ${free <= 0 && !canAd && Ads.ready ? `<div class="small">${adWaitText('undo')}</div>` : ''}
+      ${free <= 0 ? `<div class="small">무료 되돌리기는 매일 ${FREE_UNDO}번 다시 채워져요</div>` : ''}</div>`);
+    const done = () => { closeLayer(); g.undo(true); toast('↶ 되돌렸어요'); };
+    const q = (id) => v.querySelector(id);
+    if (q('#bFree')) q('#bFree').onclick = () => { profile.freeUndo.used++; saveProfile(true); done(); };
+    if (q('#bAd')) q('#bAd').onclick = async () => { if (await watchAd('undo')) { done(); toast('🎁 광고 보상: 되돌렸어요'); } else showBoomPublic(); };
+    if (q('#bGem')) q('#bGem').onclick = () => { if (profile.wallet < UNDO_GEMS) return; addGems(-UNDO_GEMS); profile.lifetimeGems += UNDO_GEMS; done(); };
+    if (q('#bFlag')) q('#bFlag').onclick = () => { closeLayer(); g.flagExplosion(); };
+    if (q('#bNo')) q('#bNo').onclick = closeLayer;
+  }
+
+  function showMagOffer() {
+    const canAd = Ads.canOffer('magnifier'), canGem = profile.wallet >= MAG_GEMS;
+    const sh = sheet(`<h3>🔍 돋보기가 없어요</h3>
+      <div class="status" style="text-align:center;padding:0 0 12px">구역을 완성하면 1개씩 받아요. 지금 바로 쓰고 싶다면:</div>
+      ${canAd ? '<button class="opt primary" id="mAd">📺 광고 보고 돋보기 +1</button>' : ''}
+      <button class="opt primary" id="mGem" ${canGem ? '' : 'disabled'}>💎 ${MAG_GEMS}개로 돋보기 +1${canGem ? '' : ` <small>(보석 ${profile.wallet}개)</small>`}</button>
+      <button class="opt primary alt" id="mNo">닫기</button>
+      ${!canAd && Ads.ready ? `<div class="small" style="text-align:center">${adWaitText('magnifier')}</div>` : ''}`);
+    const give = () => { profile.magnifiers++; saveProfile(true); closeLayer(); updateHud(); toast('🎁 돋보기 +1'); };
+    const q = (id) => sh.querySelector(id);
+    if (q('#mAd')) q('#mAd').onclick = async () => { if (await watchAd('magnifier')) give(); else showMagOffer(); };
+    q('#mGem').onclick = () => { if (profile.wallet < MAG_GEMS) return; addGems(-MAG_GEMS); profile.lifetimeGems += MAG_GEMS; sfx('gem'); give(); };
+    q('#mNo').onclick = closeLayer;
   }
 
   function showOver() {
     const s = game.s;
+    if (ADS && !s.continued && Ads.canOffer('time')) {
+      const v = veil(`<div class="card"><div class="big">⏱️</div><h2>시간 종료!</h2>
+        <p>이번 기록 <b>${s.solved.size}구역</b>\n최고 기록 ${s.best}구역 · 실수 ${s.mistakes}번</p>
+        <button class="opt primary" id="oAd">📺 광고 보고 +${TIME_BONUS}초 이어하기</button>
+        <button class="opt primary alt" id="oAgain">다시 도전</button>
+        <button class="secondary" id="oOut">나가기</button>
+        <div class="small">이어하기는 한 판에 한 번만 쓸 수 있어요</div></div>`);
+      v.querySelector('#oAd').onclick = async () => {
+        if (await watchAd('time')) {
+          if (game.s.extendTime(TIME_BONUS)) { closeLayer(); game.changed(); game.saveNow(); toast(`🎁 +${TIME_BONUS}초! 이어서 하세요`); }
+        } else showOver();
+      };
+      v.querySelector('#oAgain').onclick = () => { closeLayer(); game.restart(); };
+      v.querySelector('#oOut').onclick = () => closeGame();
+      return;
+    }
     const v = veil(`<div class="card"><div class="big">⏱️</div><h2>시간 종료!</h2>
       <p>이번 기록 <b>${s.solved.size}구역</b>\n최고 기록 ${s.best}구역 · 실수 ${s.mistakes}번</p>
       <button class="primary" id="oAgain">다시 도전</button><button class="secondary" id="oOut">나가기</button></div>`);
@@ -724,7 +837,7 @@
 
   function showMenu() {
     if (game.s.hardcore) return showHcMenu();
-    const s = sheet(`<h3>${game.cfg.emoji} ${game.cfg.name}</h3>
+    const s = sheet(`<h3>${game.cfg.emoji} ${tr(game.cfg.name)}</h3>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
       <button class="item" data-a="out"><span class="ic">🔎</span>작게 보기</button>
@@ -753,9 +866,9 @@
       <button class="item" data-a="fit"><span class="ic">🗺️</span>보드 전체 보기</button>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
-      <button class="item" data-a="rank"><span class="ic">🏆</span>랭킹 보기</button>
-      ${s.started && !s.gameOver ? '<button class="item danger" data-a="giveup"><span class="ic">🏳️</span>여기서 끝내고 기록 내기</button>' : ''}
-      <div class="status">되돌리기·돋보기 없음 · 지뢰를 밟으면 그 자리에서 끝나요.<br>완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.<br>다음 초기화: ${nextResetText()}</div>`);
+      ${ED.ranking ? '<button class="item" data-a="rank"><span class="ic">🏆</span>랭킹 보기</button>' : ''}
+      ${s.started && !s.gameOver ? `<button class="item danger" data-a="giveup"><span class="ic">🏳️</span>${ED.ranking ? '여기서 끝내고 기록 내기' : '여기서 끝내기'}</button>` : ''}
+      <div class="status">되돌리기·돋보기 없음 · 지뢰를 밟으면 그 자리에서 끝나요.<br>${ED.ranking ? '완성도(%)가 높을수록, 같으면 시간이 짧을수록 높은 순위예요.<br>' : ''}다음 초기화: ${nextResetText()}</div>`);
     sh.addEventListener('click', (e) => {
       const b = e.target.closest('.item'); if (!b) return;
       const a = b.dataset.a;
@@ -800,14 +913,14 @@
     const art = hcArt(per);
     const head = end === 'clear' ? ['🏆', '완성!'] : end === 'giveup' ? ['🏳️', '도전 종료'] : ['💥', '지뢰를 밟았어요'];
     const needName = !profile.nickname;
-    const canSend = best && !best.submitted;
+    const canSend = ED.ranking && best && !best.submitted;
     const v = veil(`<div class="card hcres">
       <div class="big">${head[0]}</div><h2>${head[1]}</h2>
       <div class="hcstat"><div><b>${s.completion}%</b><span>완성도</span></div><div><b>${fmtHMS(s.playSeconds)}</b><span>걸린 시간</span></div></div>
-      ${end === 'clear' ? `<p>이번 회차 그림은 <b>${art.emoji} ${art.name}</b> 였어요!</p>` : ''}
+      ${end === 'clear' ? `<p>이번 회차 그림은 <b>${art.emoji} ${tr(art.name)}</b> 였어요!</p>` : ''}
       <p class="small">${isNewBest ? '✨ 이번 회차 내 최고 기록이에요!' : best ? `이번 회차 내 최고: ${best.pct}% · ${fmtHMS(best.time)}\n더 좋은 기록일 때만 랭킹이 바뀌어요.` : ''}</p>
       ${canSend ? `<div class="namebox"><input id="nick" placeholder="랭킹에 쓸 이름 (한글 8자)" value="${esc(profile.nickname)}" autocomplete="off" enterkeyhint="done"><span id="nickW"></span></div>
-      <button class="primary" id="hSend">🏆 랭킹에 올리기</button>` : `<button class="primary" id="hRank">🏆 랭킹 보기</button>`}
+      <button class="primary" id="hSend">🏆 랭킹에 올리기</button>` : `${ED.ranking ? '<button class="primary" id="hRank">🏆 랭킹 보기</button>' : ''}`}
       <div id="hMsg" class="small"></div>
       <div class="row2"><button class="secondary" id="hAgain">🔁 새로 도전</button><button class="secondary" id="hOut">나가기</button></div>
     </div>`);
@@ -890,7 +1003,7 @@
   }
 
   $('btnBack').onclick = closeGame;
-  $('btnUndo').onclick = () => game && game.undo();
+  $('btnUndo').onclick = () => game && game.undo(false);
   $('btnMag').onclick = () => game && game.toggleAim();
   $('btnMenu').onclick = () => game && showMenu();
   $('mode').onclick = () => {
@@ -1201,6 +1314,7 @@
     else if (gmode === 'pinch' && pts.size === 1) gmode = 'pan';
   }
   canvas.addEventListener('pointerup', (e) => endPointer(e, false));
+  canvas.addEventListener('touchend', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });   // 뒤따르는 가짜 클릭 막기
   canvas.addEventListener('pointercancel', (e) => endPointer(e, true));
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('wheel', (e) => {
@@ -1216,7 +1330,7 @@
   let lastTick = performance.now(), autosaveAcc = 0;
   setInterval(() => {
     const now = performance.now(), dt = Math.min(1, (now - lastTick) / 1000); lastTick = now;
-    if (!game || document.hidden) return;
+    if (!game || document.hidden || adPaused) return;
     const ended = game.s.tick(dt);
     if ((game.cfg.kind === 'timed' || game.s.hardcore) && game.s.started && !game.s.gameOver) updateHud();
     if (ended) { sfx('boom'); haptic('heavy'); updateHud(); game.saveNow(); showOver(); return; }
@@ -1253,16 +1367,26 @@
     renderHome();
     const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    $('installTip').hidden = standalone || !ios;
-    if (!profile.introSeen) showGift();
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    $('installTip').hidden = standalone || !ios || PUBLIC;
+    if (PUBLIC) {
+      const nm = typeof ED.name === 'object' ? (ED.name[window.I18N ? I18N.lang : 'ko'] || ED.name.en) : ED.name;
+      document.title = nm; $('appName').textContent = nm;
+      $('btnGift').hidden = true;
+      if (!ED.ranking) $('btnRank').hidden = true;
+    }
+    if (!profile.introSeen && ED.gift) showGift();
+    if (ED.sw !== false && 'serviceWorker' in navigator && location.protocol !== 'file:') {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
     if (standalone) Storage.requestPersist();
     if (!profile.pid) { profile.pid = newPid(); saveProfile(true); }
     flushPending();
     window.addEventListener('online', flushPending);
-    window.__app = { get game() { return game; }, get profile() { return profile; }, Storage, openGame, closeGame, showRanking, hcArt };
+    window.__app = { get game() { return game; }, get profile() { return profile; }, Storage, openGame, closeGame, showRanking, hcArt, ED };
+    if (window.Ads) { await Ads.init(); Ads.loading(false); }
+    // 공개판: 곧바로 게임으로 (처음이면 오솔길, 다음부터는 마지막 보드)
+    if (PUBLIC && !new URLSearchParams(location.search).has('home')) openGame(world(profile.lastWorld) ? profile.lastWorld : 'trail');
   }
+  if (window.Ads) Ads.loading(true);
   boot();
 })();
