@@ -8,8 +8,9 @@ const ok = (c, m) => { if (!c) { fail++; console.log('FAIL', m); } else console.
 async function run(lang, rank) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: lang === 'en' ? 'en-US' : 'ko-KR' });
-  if (rank) await ctx.route('**/preview/config.js', async (route) => {
-    const res = await route.fetch(); const body = (await res.text()).replace(/window\.RANK_URL = [^;]*;/, `window.RANK_URL = ${JSON.stringify(rank)};`);
+  // 랭킹 서버 주소를 테스트용으로 바꿔 끼운다 (rank 가 비어 있으면 '서버 없음' 상태)
+  await ctx.route('**/preview/config.js', async (route) => {
+    const res = await route.fetch(); const body = (await res.text()).replace(/window\.RANK_URL = [^;]*;/, `window.RANK_URL = ${JSON.stringify(rank || '')};`);
     route.fulfill({ response: res, body });
   });
   const page = await ctx.newPage();

@@ -400,6 +400,7 @@
       <button class="item" data-a="export"><span class="ic">💾</span><span>백업 파일 내보내기<div class="note">앱을 지우거나 폰을 바꿀 때 이 파일로 이어 할 수 있어요</div></span></button>
       <button class="item" data-a="import"><span class="ic">📂</span><span>백업 파일 불러오기<div class="note">지금 기록을 백업 내용으로 바꿔요</div></span></button>
       ${ED.gift ? '<button class="item" data-a="gift"><span class="ic">💌</span>처음 메시지 다시 보기</button>' : ''}
+      ${PUBLIC ? '<a class="item" href="privacy.html" target="_blank" rel="noopener"><span class="ic">🔒</span>개인정보 처리방침</a>' : ''}
       ${PUBLIC ? `<button class="item" data-a="lang"><span class="ic">🌐</span>Language<span class="sp"></span><span class="note">${window.I18N && I18N.lang === 'en' ? 'English' : '한국어'}</span></button>` : ''}
       <div class="status">
         저장 방식: 한 수마다 자동 저장 (기기 안 두 군데에 같이 보관)<br>
@@ -548,11 +549,11 @@
     cellAt(px, py) { return [Math.floor((px - this.ox) / this.cell), Math.floor((py - this.oy) / this.cell)]; }
 
     // 입력
-    act(px, py, long) {
+    act(px, py, long, forceFlag) {
       const [x, y] = this.cellAt(px, py);
       const s = this.s;
       if (this.aiming) { this.usePeek(x, y); return; }
-      const wantFlag = (this.flagMode !== long) && s.started && !s.isRevealed(x, y);
+      const wantFlag = (forceFlag || (this.flagMode !== long)) && s.started && !s.isRevealed(x, y);
       const before = s.gems, wasFlag = s.isFlagged(x, y);
       const out = wantFlag ? s.toggleFlag(x, y) : s.reveal(x, y);
       if (!out.changed && !out.exploded) return;
@@ -740,7 +741,8 @@
     $('mode').classList.toggle('flag', flag);
     $('modeIc').textContent = flag ? '🚩' : '⛏️';
     $('modeT1').textContent = flag ? '깃발 모드' : '파기 모드';
-    $('modeT2').textContent = flag ? '길게 누르면 파기' : '길게 누르면 깃발';
+    const mouse = matchMedia('(pointer: fine)').matches;
+    $('modeT2').textContent = flag ? (mouse ? '오른쪽 클릭: 깃발' : '길게 누르면 파기') : (mouse ? '오른쪽 클릭: 깃발' : '길게 누르면 깃발');
   }
 
   function updateHud() {
@@ -1274,6 +1276,9 @@
 
   canvas.addEventListener('pointerdown', (e) => {
     if (!game) return;
+    // PC: 오른쪽 클릭 = 언제나 깃발
+    if (e.pointerType === 'mouse' && e.button === 2) { game.act(e.clientX, e.clientY, false, true); return; }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     audio();  // iOS: 첫 터치에서 소리 켜기
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1396,6 +1401,11 @@
     window.addEventListener('online', flushPending);
     window.__app = { get game() { return game; }, get profile() { return profile; }, Storage, openGame, closeGame, showRanking, hcArt, ED };
     if (window.Ads) { await Ads.init(); Ads.loading(false); }
+    // CrazyGames 가 알려 주는 이용자 언어를 따른다 (직접 고른 적이 없을 때만, 한 번)
+    if (PUBLIC && window.I18N && Ads.locale && !I18N.chosen) {
+      const want = /^ko/i.test(Ads.locale) ? 'ko' : 'en';
+      if (want !== I18N.lang) { I18N.set(want); return; }
+    }
     // 공개판: 곧바로 게임으로 (처음이면 오솔길, 다음부터는 마지막 보드)
     if (PUBLIC && !new URLSearchParams(location.search).has('home')) openGame(world(profile.lastWorld) ? profile.lastWorld : 'trail');
   }

@@ -16,7 +16,7 @@
   // 같은 자리에서 광고를 너무 자주 권하지 않는다 (CrazyGames 광고 가이드)
   const COOLDOWN = { magnifier: 120e3, undo: 180e3, time: 0, default: 90e3 };
   const last = {};
-  let ready = false, adblock = false, playing = false;
+  let ready = false, adblock = false, playing = false, locale = null;
   let hooks = { pause() {}, resume() {} };
 
   function sdk() { return root.CrazyGames && root.CrazyGames.SDK; }
@@ -29,6 +29,7 @@
       await S.init();
       if (S.environment === 'disabled') return;        // CrazyGames 밖(미리보기 주소 등)
       ready = true;
+      try { locale = (S.user && S.user.systemInfo && S.user.systemInfo.locale) || null; } catch (e) {}
       try { adblock = !!(await S.ad.hasAdblock()); } catch (e) {}
     } catch (e) { ready = false; }
   }
@@ -105,7 +106,7 @@
   root.Ads = {
     username,
     provider, init, canOffer, rewarded, cooldownLeft, gameplay, loading,
-    get ready() { return ready; }, get adblock() { return adblock; }, get playing() { return playing; },
+    get ready() { return ready; }, get locale() { return locale; }, get adblock() { return adblock; }, get playing() { return playing; },
     setHooks(h) { hooks = { ...hooks, ...h }; },
     _resetCooldowns() { for (const k in last) delete last[k]; },
   };

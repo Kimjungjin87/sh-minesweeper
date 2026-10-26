@@ -42,7 +42,7 @@
     '코알라': 'Koala', '체리': 'Cherry', '거북이': 'Turtle', '선물': 'Gift',
     // 게임
     '되돌리기': 'Undo', '메뉴': 'Menu', '파기 모드': 'Dig mode', '깃발 모드': 'Flag mode',
-    '길게 누르면 깃발': 'Hold to flag', '길게 누르면 파기': 'Hold to dig',
+    '길게 누르면 깃발': 'Hold to flag', '길게 누르면 파기': 'Hold to dig', '오른쪽 클릭: 깃발': 'Right-click: flag',
     '아무 칸이나 눌러서 시작하세요': 'Tap any tile to start', '첫 칸 주변에는 지뢰가 없어요': 'No mines around your first tap',
     '🔍 들여다볼 곳을 누르세요': '🔍 Tap where to look',
     '누른 칸 둘레 3×3의 지뢰가 5초간 보여요 · 돋보기를 다시 누르면 취소': 'Mines in the 3×3 around it show for 5s · tap Lens again to cancel',
@@ -67,7 +67,7 @@
     '시작 지점으로': 'Back to start', '크게 보기': 'Zoom in', '작게 보기': 'Zoom out', '설정 · 백업': 'Settings · Backup',
     '새 지도로 다시 시작': 'Restart with a new map',
     '이 보드의 진행·보석 기록·실수 횟수가 새 지도로 바뀌어요.\n(모은 보석 지갑은 그대로예요)': 'This board\'s progress, gems and mistakes reset with a new map.\n(Your gem wallet stays.)', '처음부터 다시 할까요?': 'Start over?', '새 지도로 시작': 'New map',
-    '설정': 'Settings', '소리': 'Sound', '진동': 'Vibration', '무음 모드에서도 소리': 'Sound in silent mode',
+    '설정': 'Settings', '개인정보 처리방침': 'Privacy policy', '소리': 'Sound', '진동': 'Vibration', '무음 모드에서도 소리': 'Sound in silent mode',
     '켜면 아이폰 무음 스위치와 상관없이 소리가 나요 (보던 영상 소리는 잠시 멈출 수 있어요)': 'Plays sound even with the iPhone silent switch on (may pause other audio)',
     '백업 파일 내보내기': 'Export backup', '앱을 지우거나 폰을 바꿀 때 이 파일로 이어 할 수 있어요': 'Use it to continue on another device',
     '백업 파일 불러오기': 'Import backup', '지금 기록을 백업 내용으로 바꿔요': 'Replaces your current progress',
@@ -232,8 +232,11 @@
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
 
+  let chosen = false;
+  try { chosen = !!localStorage.getItem(LS); } catch (e) {}
   root.I18N = {
     get lang() { return lang; },
+    get chosen() { return chosen || new URLSearchParams(location.search).has('lang'); },
     t,
     set(l) {
       try { localStorage.setItem(LS, l); } catch (e) {}
