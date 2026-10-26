@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
 // ✏️ 공개판 이름 (정해지면 여기만 바꾸면 된다)
 const NAME = { ko: '지뢰 마라톤', en: 'Mine Marathon' };
 // ✏️ 랭킹 서버 (Cloudflare Worker) 주소 — server-worker/README.md 대로 만든 뒤 넣는다. 비어 있으면 랭킹 화면이 안 보인다.
-const PUBLIC_RANK_URL = '';
+const PUBLIC_RANK_URL = 'https://mine-marathon-rank.suhogumsa.workers.dev/';
 
 const FILES = ['index.html', 'app.js', 'engine.js', 'pictures.js', 'storage.js', 'ranklib.js', 'i18n.js', 'ads.js'];
 const ICONS = ['icon-192.png', 'icon-512.png'];

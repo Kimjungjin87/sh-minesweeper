@@ -1,5 +1,5 @@
 /* 공개판 설정 — tools/build-public.js 가 만든 파일 (직접 고치지 마세요) */
-window.RANK_URL = "";
+window.RANK_URL = "https://mine-marathon-rank.suhogumsa.workers.dev/";
 window.EDITION = {
   "id": "public",
   "name": {
