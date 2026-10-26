@@ -18,6 +18,8 @@
   const MAG_GEMS = 20;        // 공개판: 보석으로 돋보기 사기
   const TIME_BONUS = 30;      // 공개판: 타임 어택 이어하기 초
   const tr = (t) => (window.I18N ? window.I18N.t(t) : t);
+  // 공개판(지뢰 마라톤)에서는 하드코어 보드를 '마라톤'이라 부른다
+  const wname = (w) => tr(PUBLIC && w.kind === 'hardcore' ? '마라톤' : w.name);
 
   const { WORLDS, world, key, kx, ky, fdiv, SECTOR, Session, todayStamp } = Mines;
   const PEEK_MS = 5000;
@@ -289,7 +291,9 @@
     $('albumCount').textContent = `${Pictures.list.filter((p) => profile.pictures[p.id] > 0).length}/${Pictures.list.length}`;
     $('tSectors').textContent = Object.values(summaries).reduce((n, s) => n + ((s.solved || []).length), 0);
     const today = todayStamp();
-    $('worlds').innerHTML = WORLDS.map((w) => {
+    // 공개판(지뢰 마라톤)은 하드코어를 맨 위에
+    const order = PUBLIC ? [...WORLDS].sort((a, b) => (b.kind === 'hardcore') - (a.kind === 'hardcore')) : WORLDS;
+    $('worlds').innerHTML = order.map((w) => {
       const s = summaries[w.id];
       let st = '<div class="st new">새 지도</div>';
       const fresh = s && s.start && (w.kind !== 'daily' || s.day === today);
@@ -299,7 +303,7 @@
         const now = live ? (s.gameOver ? (s.result && s.result.end === 'clear' ? '🏆 완성!' : '도전 끝') : '진행 중') : '';
         return `<button class="world hc" data-id="${w.id}">
           <div class="em">${w.emoji}</div>
-          <div class="bd"><div class="nm">${tr(w.name)}<span class="chip hcchip">HARDCORE</span></div>
+          <div class="bd"><div class="nm">${wname(w)}<span class="chip hcchip">HARDCORE</span></div>
           <div class="sb">${tr(w.sub)}</div>
           <div class="st"><span>🔄 ${nextResetText()}</span></div>
           <div class="st">${b ? `<span>🏆 내 최고 ${b.pct}% · ${fmtHMS(b.time)}</span>` : '<span class="new">이번 회차 기록 없음</span>'}${now ? `<span style="opacity:.7">${now}</span>` : ''}</div></div>
@@ -312,7 +316,7 @@
       }
       return `<button class="world" data-id="${w.id}">
         <div class="em">${w.emoji}</div>
-        <div class="bd"><div class="nm">${tr(w.name)}<span class="chip">지뢰 ${Math.round(w.density * 100)}%</span></div>
+        <div class="bd"><div class="nm">${wname(w)}<span class="chip">지뢰 ${Math.round(w.density * 100)}%</span></div>
         <div class="sb">${tr(w.sub)}</div>${st}</div>
         <div class="go">▶</div></button>`;
     }).join('');
@@ -414,7 +418,7 @@
       } else if (a === 'export') exportBackup();
       else if (a === 'import') $('fileIn').click();
       else if (a === 'gift') showGift();
-      else if (a === 'lang' && window.I18N) { profile.lang = I18N.lang === 'en' ? 'ko' : 'en'; await saveProfile(true); I18N.set(profile.lang); renderHome(); applyTheme(); if (game) { updateHud(); setMode(game.flagMode); $('gTitle').textContent = `${game.cfg.emoji} ${tr(game.cfg.name)}`; } showSettings(); }
+      else if (a === 'lang' && window.I18N) { profile.lang = I18N.lang === 'en' ? 'ko' : 'en'; await saveProfile(true); I18N.set(profile.lang); renderHome(); applyTheme(); if (game) { updateHud(); setMode(game.flagMode); $('gTitle').textContent = `${game.cfg.emoji} ${wname(game.cfg)}`; } showSettings(); }
     });
   }
 
@@ -705,7 +709,7 @@
     const save = await Storage.load('world:' + id);
     game = new Game(cfg, save);
     $('home').hidden = true; $('game').hidden = false;
-    $('gTitle').textContent = `${cfg.emoji} ${tr(cfg.name)}`;
+    $('gTitle').textContent = `${cfg.emoji} ${wname(cfg)}`;
     $('game').classList.toggle('hc', cfg.kind === 'hardcore');
     if (cfg.kind === 'hardcore' && !profile.pid) { profile.pid = newPid(); saveProfile(true); }
     resize(); game.place();
@@ -838,7 +842,7 @@
 
   function showMenu() {
     if (game.s.hardcore) return showHcMenu();
-    const s = sheet(`<h3>${game.cfg.emoji} ${tr(game.cfg.name)}</h3>
+    const s = sheet(`<h3>${game.cfg.emoji} ${wname(game.cfg)}</h3>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
       <button class="item" data-a="out"><span class="ic">🔎</span>작게 보기</button>
@@ -863,7 +867,7 @@
 
   function showHcMenu() {
     const g = game, s = g.s;
-    const sh = sheet(`<h3>🔥 하드코어 · ${fmtPeriod(s.period || Mines.periodId())} 회차</h3>
+    const sh = sheet(`<h3>🔥 ${PUBLIC ? '마라톤' : '하드코어'} · ${fmtPeriod(s.period || Mines.periodId())} 회차</h3>
       <button class="item" data-a="fit"><span class="ic">🗺️</span>보드 전체 보기</button>
       <button class="item" data-a="center"><span class="ic">🎯</span>시작 지점으로</button>
       <button class="item" data-a="in"><span class="ic">🔍</span>크게 보기</button>
@@ -964,7 +968,7 @@
     const cur = Mines.periodId(), prevId = Mines.periodId(Mines.periodStart(Mines.periodStart() - 1000));
     const mine = profile.hcBest[period];
     const tabs = `<div class="tabs"><button class="tab ${period === cur ? 'on' : ''}" data-p="${cur}">이번 회차 ${fmtPeriod(cur)}</button><button class="tab ${period === prevId ? 'on' : ''}" data-p="${prevId}">지난 회차 ${fmtPeriod(prevId)}</button></div>`;
-    const sh = sheet(`<h3>🏆 하드코어 랭킹</h3>${tabs}
+    const sh = sheet(`<h3>🏆 ${PUBLIC ? '마라톤' : '하드코어'} 랭킹</h3>${tabs}
       <div class="status" style="padding-top:0;text-align:center">${period === cur ? '다음 초기화 ' + nextResetText() : '끝난 회차'}</div>
       <div id="rkList" class="rk"><div class="rkmsg">불러오는 중…</div></div>
       <div class="rkme">${mine ? `내 최고: <b>${mine.pct}%</b> · ${fmtHMS(mine.time)}` : '이번 회차 내 기록 없음'} · 이름: <b>${esc(profile.nickname || '없음')}</b>
@@ -1374,11 +1378,12 @@
     if (PUBLIC) {
       const nm = typeof ED.name === 'object' ? (ED.name[window.I18N ? I18N.lang : 'ko'] || ED.name.en) : ED.name;
       document.title = nm; $('appName').textContent = nm;
-      $('appSub').textContent = '끝없이 펼쳐지는 지뢰찾기';
+      $('appSub').textContent = '하드코어 지뢰찾기 · 지뢰 한 번이면 끝';
       $('howto').innerHTML = $('howto').innerHTML
         .replace('• 지뢰를 밟으면 실수로 세고, 광고 없이 되돌릴 수 있어요', `• 지뢰를 밟으면 실수로 세고, 하루 ${FREE_UNDO}번은 무료로 되돌릴 수 있어요`)
         .replace(/• 🔥 하드코어:[^<]*/, '• 🔥 하드코어: 되돌리기·돋보기 없이 96×96 보드에 도전! 화·목·토 아침 7시(한국 시간)에 새 그림으로 바뀌고 랭킹에 올라가요');
       $('btnGift').hidden = true;
+      $('rankLabel').textContent = '마라톤 랭킹';
       if (!rankingOn()) $('btnRank').hidden = true;
     }
     if (!profile.introSeen && ED.gift) showGift();

@@ -3,8 +3,8 @@ window.RANK_URL = "";
 window.EDITION = {
   "id": "public",
   "name": {
-    "ko": "무한지뢰",
-    "en": "Minefinity"
+    "ko": "지뢰 마라톤",
+    "en": "Mine Marathon"
   },
   "storage": "pub",
   "gift": false,

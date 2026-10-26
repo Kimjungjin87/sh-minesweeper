@@ -42,7 +42,7 @@ async function tests() {
   const sub = (o) => call('POST', '', { period: '20261020', pid: 'aaaaaaaaaaaa1', name: '선화', pct: 40, time: 3000, end: 'dead', ...o });
 
   let r = await call('GET', '');
-  ok(r.j.ok && r.j.app === 'minefinity-rank' && r.j.period === '20261020' && r.cors === '*', 'health + CORS');
+  ok(r.j.ok && r.j.app === 'mine-marathon-rank' && r.j.period === '20261020' && r.cors === '*', 'health + CORS');
   ok((await call('OPTIONS', '')).status === 204, 'preflight');
   r = await sub({}); ok(r.j.ok && r.j.updated && r.j.me.rank === 1, 'first record');
   now += 5000;

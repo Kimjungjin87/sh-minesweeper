@@ -14,15 +14,15 @@
 
   const EXACT = {
     // 홈
-    '광고 없이, 끝없이': 'Endless, relaxing minesweeper', '끝없이 펼쳐지는 지뢰찾기': 'Minesweeper that never ends',
+    '광고 없이, 끝없이': 'Endless, relaxing minesweeper', '끝없이 펼쳐지는 지뢰찾기': 'Minesweeper that never ends', '하드코어 지뢰찾기 · 지뢰 한 번이면 끝': 'Hardcore minesweeper · one mine and you\'re out',
     '보석': 'Gems', '완성 구역': 'Sectors', '돋보기': 'Lens', '전체 실수': 'Mistakes',
-    '하드코어 랭킹': 'Hardcore ranking', '그림 도감': 'Picture album', '보드 테마': 'Board themes',
+    '하드코어 랭킹': 'Hardcore ranking', '마라톤 랭킹': 'Marathon ranking', '그림 도감': 'Picture album', '보드 테마': 'Board themes',
     '하는 법': 'How to play',
     '새 지도': 'New map', '이어 하기': 'Continue', '진행 중': 'In progress', '도전 끝': 'Run over', '🏆 완성!': '🏆 Complete!',
     '이번 회차 기록 없음': 'No record this round',
     // 보드 이름
     '들판 산책': 'Meadow Walk', '오솔길': 'Forest Trail', '깊은 숲': 'Deep Woods', '심연': 'The Abyss',
-    '오늘의 보드': 'Daily Board', '타임 어택': 'Time Attack', '하드코어': 'Hardcore',
+    '오늘의 보드': 'Daily Board', '타임 어택': 'Time Attack', '하드코어': 'Hardcore', '마라톤': 'Marathon', '🏆 마라톤 랭킹': '🏆 Marathon ranking',
     '지뢰가 드문 편안한 보드': 'Relaxed board with few mines',
     '원작과 비슷한 기본 난이도': 'Classic difficulty',
     '생각을 조금 더 해야 하는 보드': 'Takes a bit more thinking',
@@ -156,7 +156,8 @@
     [/^\s*최고 기록 (\d+)구역 · 실수 (\d+)번$/, (m) => `\nBest ${m[1]} sectors · ${m[2]} mistakes`],
     [/^마지막 저장: (.+)$/, (m) => `Last saved: ${t(m[1])}`],
     [/^(.+) 에 만든 백업 · 보드 (\d+)개\s*지금 기기의 기록은 이 백업으로 바뀌어요\.$/, (m) => `Backup from ${m[1]} · ${m[2]} boards\nYour current progress will be replaced.`],
-    [/^🔥 하드코어 · (.+) 회차$/, (m) => `🔥 Hardcore · round ${m[1]}`],
+    [/^🔥 하드코어 · (.+) 회차$/, (m) => `🔥 Hardcore · round ${fixDay(m[1])}`],
+    [/^🔥 마라톤 · (.+) 회차$/, (m) => `🔥 Marathon · round ${fixDay(m[1])}`],
     [/^지금 완성도 ([\d.]+)% · (.+) 로 기록돼요\.\s*이 판은 더 이어 할 수 없어요\.$/, (m) => `Recorded as ${m[1]}% · ${m[2]}.\nThis run can't be continued.`],
     [/^이번 회차 그림은 $/, () => 'This round\'s picture was '],
     [/^ 였어요!$/, () => '!'],

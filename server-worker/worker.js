@@ -1,5 +1,5 @@
 /*
- * 무한지뢰(Minefinity) 하드코어 랭킹 서버 — Cloudflare Workers + D1 (무료 요금제)
+ * 지뢰 마라톤(Mine Marathon) 하드코어 랭킹 서버 — Cloudflare Workers + D1 (무료 요금제)
  *
  *  · 무료 한도: 하루 요청 10만 번, D1 읽기 하루 500만 행 — 공개 서비스에 넉넉하다.
  *  · 표는 처음 요청이 올 때 저절로 만들어진다 (콘솔에서 SQL 칠 필요 없음).
@@ -200,7 +200,7 @@ const worker = {
       const url = new URL(request.url);
       if (request.method === 'GET') {
         if (url.searchParams.get('action') === 'top') return json(await handleTop(env.DB, url.searchParams, now), { 'Cache-Control': 'public, max-age=10' });
-        return json({ ok: true, app: 'minefinity-rank', period: periodId(periodStart(now)) });
+        return json({ ok: true, app: 'mine-marathon-rank', period: periodId(periodStart(now)) });
       }
       if (request.method === 'POST') {
         const text = await request.text();
