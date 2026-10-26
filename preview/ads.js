@@ -66,6 +66,8 @@
           adFinished: () => resolve('ok'),
           adError: (err) => {
             const c = (err && err.code) || 'other';
+            // Basic Launch(시험 기간)에는 광고가 꺼져 있다 → 광고 버튼을 더 이상 보이지 않는다
+            if (c === 'adsDisabledBasicLaunch') { ready = false; resolve('disabled'); return; }
             resolve(c === 'unfilled' ? 'unfilled' : c === 'adblock' ? 'adblock' : c === 'adCooldown' ? 'cooldown' : 'error');
           },
         });

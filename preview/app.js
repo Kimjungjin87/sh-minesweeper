@@ -267,7 +267,7 @@
   async function watchAd(slot) {
     const r = await Ads.rewarded(slot);
     if (r === 'ok') { sfx('gem'); haptic('medium'); return true; }
-    toast(r === 'adblock' ? '광고 차단이 켜져 있어 광고를 볼 수 없어요'
+    toast(r === 'disabled' ? '지금은 광고 보상을 쓸 수 없어요' : r === 'adblock' ? '광고 차단이 켜져 있어 광고를 볼 수 없어요'
       : r === 'cooldown' ? '잠시 후에 다시 볼 수 있어요' : '지금은 볼 수 있는 광고가 없어요. 잠시 후 다시 해 보세요');
     return false;
   }

@@ -56,7 +56,7 @@
     '📺 광고 보고 돋보기 +1': '📺 Watch an ad for +1 lens',
     '↶ 되돌렸어요': '↶ Undone', '🎁 광고 보상: 되돌렸어요': '🎁 Reward: undone', '🎁 돋보기 +1': '🎁 +1 lens',
     '광고 차단이 켜져 있어 광고를 볼 수 없어요': 'Ads are blocked, so the reward ad can\'t play',
-    '잠시 후에 다시 볼 수 있어요': 'Available again in a moment',
+    '잠시 후에 다시 볼 수 있어요': 'Available again in a moment', '지금은 광고 보상을 쓸 수 없어요': 'Ad rewards aren\'t available right now',
     '지금은 볼 수 있는 광고가 없어요. 잠시 후 다시 해 보세요': 'No ad available right now. Please try again later',
     '먼저 첫 칸을 열어 주세요': 'Open your first tile first',
     '🧩 구역을 완성하면 🔍 돋보기를 얻어요': '🧩 Complete a sector to earn a 🔍 lens',
